@@ -1,7 +1,7 @@
 
 from PyQt5 import QtWidgets, QtCore, QtGui
 from datetime import datetime
-from ui_components import UserManager, SystemLog
+from ui_components import UserManager, SystemLog, BluetoothConnectionStatus
 from ui_tabs import AccountTab, LiveMonitorTab, HistoryTab
 
 class MainWindow(QtWidgets.QMainWindow):
@@ -26,6 +26,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
         # System log widget
         self.system_log = SystemLog()
+        self.connection_status = BluetoothConnectionStatus()
 
         # Set up the main window UI
         self.setup_ui()
@@ -49,6 +50,8 @@ class MainWindow(QtWidgets.QMainWindow):
         title = QtWidgets.QLabel("PPG Health Monitor")
         title.setAlignment(QtCore.Qt.AlignCenter)
         layout.addWidget(title)
+
+        layout.addWidget(self.connection_status)
 
         self.tabs = QtWidgets.QTabWidget()
 
@@ -111,7 +114,6 @@ class MainWindow(QtWidgets.QMainWindow):
 
         # Update status bar
         self.status_bar.setText("Logged out - Please log in to start recording session data")
-
 
 
     def close_window(self):
