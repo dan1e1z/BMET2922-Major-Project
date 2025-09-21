@@ -2,7 +2,7 @@
 from PyQt5 import QtWidgets, QtCore, QtGui
 from datetime import datetime
 from ui_components import UserManager, SystemLog
-from ui_tabs import AccountTab
+from ui_tabs import AccountTab, LiveMonitorTab
 
 class MainWindow(QtWidgets.QMainWindow):
     """
@@ -50,12 +50,12 @@ class MainWindow(QtWidgets.QMainWindow):
         title.setAlignment(QtCore.Qt.AlignCenter)
         layout.addWidget(title)
 
-        # Add the system log widget
-        self.system_log = SystemLog()
-        layout.addWidget(self.system_log)
-
         self.tabs = QtWidgets.QTabWidget()
+
+        self.live_monitor_tab = LiveMonitorTab(self.system_log)
         self.login_tab = AccountTab(self.user_manager)
+
+        self.tabs.addTab(self.live_monitor_tab, "Live Monitor")
         self.tabs.addTab(self.login_tab, "Account")
         
         # Connect signals
@@ -79,26 +79,35 @@ class MainWindow(QtWidgets.QMainWindow):
 
 
     def handle_login(self, username):
+        """
+        Handle user login event.
+        Updates session state, status bar, logs the event, and switches to the Live Monitor tab.
+        Args:
+            username (str): The username of the logged-in user.
+        """
         self.current_user = username
         self.session_start_time = datetime.now()
         self.expected_sequence = 0
-    
-        # Update status
+
+        # Update status bar with session info
         self.status_bar.setText(f"Recording session for {username} - Session started at {self.session_start_time.strftime('%H:%M:%S')}")
-        
-        # Log the login
+
+        # Log the login event
         self.system_log.add_log_entry(f"User '{username}' logged in")
-        
+
         # Switch to Live Monitor tab
         self.tabs.setCurrentIndex(0)
     
     def handle_logout(self):
-        
-        # Log the logout
+        """
+        Handle user logout event.
+        Logs the event and updates the status bar.
+        """
+        # Log the logout event
         if self.current_user:
             self.system_log.add_log_entry(f"User '{self.current_user}' logged out")
-        
-        # Update status
+
+        # Update status bar
         self.status_bar.setText("Logged out - Please log in to start recording session data")
 
 
