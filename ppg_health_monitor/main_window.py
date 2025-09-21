@@ -3,6 +3,7 @@ from PyQt5 import QtWidgets, QtCore, QtGui
 from datetime import datetime
 from ui_components import UserManager, SystemLog, BluetoothConnectionStatus
 from ui_tabs import AccountTab, LiveMonitorTab, HistoryTab
+from bluetooth_monitor import BluetoothMonitor
 
 class MainWindow(QtWidgets.QMainWindow):
     """
@@ -26,7 +27,23 @@ class MainWindow(QtWidgets.QMainWindow):
 
         # System log widget
         self.system_log = SystemLog()
+
+        # Bluetooth connection status widget
         self.connection_status = BluetoothConnectionStatus()
+
+        # setup thread to run Bluetooth Monitor
+        self.bluetooth_monitor = BluetoothMonitor()
+        self.bluetooth_monitor_thread = QtCore.QThread()
+        self.bluetooth_monitor.moveToThread(self.bluetooth_monitor_thread)
+        self.bluetooth_monitor_thread.started.connect(self.bluetooth_monitor.monitor)
+
+        # Receive signals (packets) from BluetoothMonitor
+        self.bluetooth_monitor.packet_received.connect(self.handle_new_packet)
+        self.bluetooth_monitor.connection_status_changed.connect(self.handle_connection_status)
+        self.bluetooth_monitor.connection_timeout.connect(self.handle_connection_timeout)
+
+        self.bluetooth_monitor_thread.start()
+
 
         # Set up the main window UI
         self.setup_ui()
@@ -51,7 +68,10 @@ class MainWindow(QtWidgets.QMainWindow):
         title.setAlignment(QtCore.Qt.AlignCenter)
         layout.addWidget(title)
 
+        # Bluetooth connection status
         layout.addWidget(self.connection_status)
+
+        self.serial_reader = BluetoothMonitor()
 
         self.tabs = QtWidgets.QTabWidget()
 
@@ -123,4 +143,14 @@ class MainWindow(QtWidgets.QMainWindow):
         self.system_log.add_log_entry("Application closed")
         QtWidgets.QApplication.quit()
 
+
+    def handle_new_packet(self, packet):
+        pass
+
+    def handle_connection_status(self, connected, message):
+        self.connection_status.update_status(connected, message)
+        pass
+
+    def handle_connection_timeout(self):
+        pass
         
