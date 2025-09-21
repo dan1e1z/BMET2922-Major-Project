@@ -2,7 +2,7 @@
 from PyQt5 import QtWidgets, QtCore, QtGui
 from datetime import datetime
 from ui_components import UserManager, SystemLog
-from ui_tabs import AccountTab, LiveMonitorTab
+from ui_tabs import AccountTab, LiveMonitorTab, HistoryTab
 
 class MainWindow(QtWidgets.QMainWindow):
     """
@@ -54,9 +54,11 @@ class MainWindow(QtWidgets.QMainWindow):
 
         self.live_monitor_tab = LiveMonitorTab(self.system_log)
         self.login_tab = AccountTab(self.user_manager)
+        self.history_tab = HistoryTab()
 
         self.tabs.addTab(self.live_monitor_tab, "Live Monitor")
         self.tabs.addTab(self.login_tab, "Account")
+        self.tabs.addTab(self.history_tab, "Health History")
         
         # Connect signals
         self.login_tab.login_successful.connect(self.handle_login)
