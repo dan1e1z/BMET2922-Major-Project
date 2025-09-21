@@ -1,0 +1,2 @@
+class AccountTab:
+    pass
