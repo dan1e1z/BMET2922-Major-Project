@@ -1,0 +1,60 @@
+from PyQt5 import QtWidgets
+from datetime import datetime
+
+class SystemLog(QtWidgets.QWidget):
+    """
+    A widget for displaying and managing system log messages in the application.
+    Provides a text area for log entries and a button to clear the log.
+    """
+    def __init__(self):
+        """
+        Initialize the SystemLog widget and set up the UI components.
+        """
+        super().__init__()
+        self.setup_console_log_ui()
+
+    def setup_console_log_ui(self):
+        """
+        Set up the layout and widgets for the system log UI.
+        Includes a title, a read-only text area, and a clear button.
+        """
+        layout = QtWidgets.QVBoxLayout()
+        title = QtWidgets.QLabel("System Log")
+        layout.addWidget(title)
+
+        # Create the log text area
+        self.log_text = QtWidgets.QTextEdit()
+        self.log_text.setReadOnly(True)
+        self.log_text.setMaximumHeight(150)
+        layout.addWidget(self.log_text)
+
+        # Create the clear button
+        clear_btn = QtWidgets.QPushButton("Clear Log")
+        clear_btn.setMaximumWidth(100)
+        clear_btn.clicked.connect(self.clear_log)
+        layout.addWidget(clear_btn)
+        
+        # Set the layout for this widget
+        self.setLayout(layout)
+
+    def add_log_entry(self, message):
+        """
+        Add a log entry to the log text area with a timestamp.
+        Automatically scrolls to the bottom after adding.
+
+        Args:
+            message (str): The log message to add.
+        """
+        timestamp = datetime.now().strftime("%a %b %d %H:%M:%S %Y")
+        log_entry = f"{timestamp}: {message}"
+        self.log_text.append(log_entry)
+
+        # Auto-scroll to bottom
+        scrollbar = self.log_text.verticalScrollBar()
+        scrollbar.setValue(scrollbar.maximum())
+    
+    def clear_log(self):
+        """
+        Clear all log entries from the log text area.
+        """
+        self.log_text.clear()
