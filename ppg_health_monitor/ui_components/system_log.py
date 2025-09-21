@@ -11,9 +11,9 @@ class SystemLog(QtWidgets.QWidget):
         Initialize the SystemLog widget and set up the UI components.
         """
         super().__init__()
-        self.setup_console_log_ui()
+        self.setup_ui()
 
-    def setup_console_log_ui(self):
+    def setup_ui(self):
         """
         Set up the layout and widgets for the system log UI.
         Includes a title, a read-only text area, and a clear button.
