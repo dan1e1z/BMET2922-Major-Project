@@ -1,6 +1,7 @@
 
 from PyQt5 import QtWidgets, QtCore, QtGui
 from datetime import datetime
+import numpy as np
 from ui_components import UserManager, SystemLog, BluetoothConnectionStatus
 from ui_tabs import AccountTab, LiveMonitorTab, HistoryTab
 from bluetooth_monitor import BluetoothMonitor
@@ -145,7 +146,22 @@ class MainWindow(QtWidgets.QMainWindow):
 
 
     def handle_new_packet(self, packet):
-        pass
+        sequence = packet.get('sequence', 0)
+        self.expected_sequence = sequence
+        if self.expected_sequence != sequence:
+            self.system_log.add_log_entry(f"Packet sequence mismatch: expected {self.expected_sequence}, got {sequence}")
+        self.expected_sequence += 1
+
+        # Process the packet in PPG tab and check for alarms
+        alarm_message = self.live_monitor_tab.new_data_received(packet)
+        if alarm_message:
+            self.system_log.add_log_entry(alarm_message)
+
+        if self.current_user:
+            pulse = packet.get('pulse', 0)
+            current_samples = len(self.live_monitor_tab.session_pulses)
+            duration = (datetime.now() - self.session_start_time).total_seconds() / 60
+            self.status_bar.setText(f"Recording for {self.current_user} | Current BPM: {pulse:.1f} | Duration: {duration:.1f}min | Samples: {current_samples}")
 
     def handle_connection_status(self, connected, message):
         self.connection_status.update_status(connected, message)

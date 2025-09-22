@@ -1,13 +1,24 @@
 from PyQt5 import QtWidgets, QtCore
 import pyqtgraph as pg
+import numpy as np 
+
 class LiveMonitorTab(QtWidgets.QWidget):
     def __init__(self, system_log):
         super().__init__()
+
+        # User/session management variables
         self.current_user = None
         self.session_raw_ppg = []
         self.session_start_time = None
-        self.current_bpm = 0
+        self.session_bpm = []
+
+        # System log wdiget
         self.system_log = system_log
+
+        # Data used for visualization
+        self.visual_bpm_data = []
+        self.visual_raw_pgg_data = []
+        self.current_bpm = 0
 
         self.setup_ui()
 
@@ -74,4 +85,34 @@ class LiveMonitorTab(QtWidgets.QWidget):
 
         self.setLayout(main_layout)
 
-    pass
+    def new_data_received(self, packet):
+        
+        # DEBUGGING PRINTS
+        # print("packet: ", packet)
+        # print ("bpm: ", packet['bpm'])
+
+        bpm = packet['bpm']
+        self.current_bpm = packet['bpm']
+
+        if  bpm > 0:
+            self.bpm_display.setText(f"{bpm:.1f} BPM")
+
+            # add bpm to logined user session data
+            if self.current_user:
+                self.session_bpm.append(bpm)
+        else:
+            self.bpm_display.setText("-- BPM")
+
+        # Store data for plotting
+        self.visual_bpm_data.append(bpm)
+        self.visual_raw_pgg_data.extend(packet["ppg_values"])
+
+        # update render plots
+        self.update_plots()
+        return
+
+    def update_plots(self):
+        if len(self.visual_bpm_data) > 1:
+            self.bpm_curve.setData(np.arange(len(self.visual_bpm_data)), np.array(self.visual_bpm_data))
+        if len(self.visual_raw_pgg_data) > 1:
+            self.raw_ppg_curve.setData(np.arange(len(self.visual_raw_pgg_data)), np.array(self.visual_raw_pgg_data))
