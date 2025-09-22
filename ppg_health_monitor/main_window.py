@@ -206,7 +206,9 @@ class MainWindow(QtWidgets.QMainWindow):
         pass
 
     def handle_connection_timeout(self):
-        pass
+        """Handle timeout when no packets received for 5+ seconds"""
+        self.connection_status.show_timeout_alarm()
+        self.system_log.add_log_entry("No data received for 5+ seconds - Check sensor power")
 
     def save_current_session(self):
         # print("save current session")
