@@ -182,6 +182,25 @@ class MainWindow(QtWidgets.QMainWindow):
 
         QtWidgets.QApplication.quit()
 
+    def closeEvent(self, event):
+        """
+        Overrides the close event to ask for confirmation before closing.
+        """
+        reply = QtWidgets.QMessageBox.question(self, 'Confirm Close',
+            "Do you want to save your session and quit?",
+            QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No | QtWidgets.QMessageBox.Cancel)
+
+        if reply == QtWidgets.QMessageBox.Yes:
+            print("Saving session and closing...")
+            self.close_window() 
+            event.accept()
+        elif reply == QtWidgets.QMessageBox.No:
+            print("Closing without saving...")
+            event.accept()
+        else:
+            print("Close operation canceled.")
+            event.ignore()
+
 
     def handle_new_packet(self, packet):
         sequence = packet.get('sequence', 0)
