@@ -67,6 +67,7 @@ class MainWindow(QtWidgets.QMainWindow):
         # Main title label
         title = QtWidgets.QLabel("PPG Health Monitor")
         title.setAlignment(QtCore.Qt.AlignCenter)
+        title.setStyleSheet("font-size: 24px; font-weight: bold; color: #2E7D32; margin: 10px;")
         layout.addWidget(title)
 
         # Bluetooth connection status
@@ -75,6 +76,21 @@ class MainWindow(QtWidgets.QMainWindow):
         self.serial_reader = BluetoothMonitor()
 
         self.tabs = QtWidgets.QTabWidget()
+        self.tabs.setStyleSheet("""
+            QTabWidget::pane {
+                border: 1px solid #C0C0C0;
+                background-color: white;
+            }
+            QTabBar::tab {
+                background-color: #E0E0E0;
+                padding: 8px 16px;
+                margin-right: 2px;
+            }
+            QTabBar::tab:selected {
+                background-color: #4CAF50;
+                color: white;
+            }
+        """)
 
         self.live_monitor_tab = LiveMonitorTab(self.system_log)
         self.account_tab = AccountTab(self.user_manager)
@@ -93,10 +109,12 @@ class MainWindow(QtWidgets.QMainWindow):
 
         # Status bar
         self.status_bar = QtWidgets.QLabel("Ready - Please log in to start recording session data")
+        self.status_bar.setStyleSheet("background-color: #f0f0f0; padding: 5px; border-top: 1px solid #ccc;")
         layout.addWidget(self.status_bar)
 
         # Exit button to close the application
         exit_btn = QtWidgets.QPushButton("Exit Application")
+        exit_btn.setStyleSheet("QPushButton { background-color: #757575; color: white; padding: 8px; border: none; border-radius: 4px; }")
         exit_btn.clicked.connect(self.close_window)
         layout.addWidget(exit_btn)
 

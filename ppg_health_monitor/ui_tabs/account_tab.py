@@ -31,6 +31,8 @@ class AccountTab(QtWidgets.QWidget):
         # Title label
         title = QtWidgets.QLabel("Account Management")
         title.setAlignment(QtCore.Qt.AlignCenter)
+        title.setStyleSheet("font-size: 18px; font-weight: bold; margin: 10px;")
+        layout.addWidget(title)
 
         # Stacked widget for switching between login, signup, and logged-in views
         self.stacked = QtWidgets.QStackedWidget()
@@ -47,6 +49,10 @@ class AccountTab(QtWidgets.QWidget):
         btn_layout = QtWidgets.QHBoxLayout()
         self.login_tab_btn = QtWidgets.QPushButton("Login")
         self.signup_tab_btn = QtWidgets.QPushButton("Sign Up")
+
+        self.login_tab_btn.setStyleSheet("QPushButton { padding: 8px; margin: 2px; }")
+        self.signup_tab_btn.setStyleSheet("QPushButton { padding: 8px; margin: 2px; }")
+
         self.login_tab_btn.clicked.connect(self.show_login)
         self.signup_tab_btn.clicked.connect(self.show_signup)
         btn_layout.addWidget(self.login_tab_btn)
@@ -57,6 +63,7 @@ class AccountTab(QtWidgets.QWidget):
         # Status label for displaying messages
         self.status_label = QtWidgets.QLabel("")
         self.status_label.setAlignment(QtCore.Qt.AlignCenter)
+        self.status_label.setStyleSheet("color: blue; font-weight: bold; margin: 10px;")
         layout.addWidget(self.status_label)
 
         self.setLayout(layout)
@@ -90,7 +97,11 @@ class AccountTab(QtWidgets.QWidget):
         self.login_pass = QtWidgets.QLineEdit()
         self.login_pass.setEchoMode(QtWidgets.QLineEdit.Password)
 
+        self.login_user.setStyleSheet("padding: 8px; border: 1px solid #ccc; border-radius: 4px;")
+        self.login_pass.setStyleSheet("padding: 8px; border: 1px solid #ccc; border-radius: 4px;")
+
         btn = QtWidgets.QPushButton("Login")
+        btn.setStyleSheet("QPushButton { background-color: #4CAF50; color: white; padding: 10px; border: none; border-radius: 4px; font-weight: bold; }")
         btn.clicked.connect(self.handle_login)
 
         layout.addRow("Username:", self.login_user)
@@ -114,7 +125,11 @@ class AccountTab(QtWidgets.QWidget):
         self.signup_confirm = QtWidgets.QLineEdit()
         self.signup_confirm.setEchoMode(QtWidgets.QLineEdit.Password)
 
+        for field in [self.signup_user, self.signup_pass, self.signup_confirm]:
+            field.setStyleSheet("padding: 8px; border: 1px solid #ccc; border-radius: 4px;")
+
         btn = QtWidgets.QPushButton("Sign Up")
+        btn.setStyleSheet("QPushButton { background-color: #008CBA; color: white; padding: 10px; border: none; border-radius: 4px; font-weight: bold; }")
         btn.clicked.connect(self.handle_signup)
 
         layout.addRow("Username:", self.signup_user)
@@ -136,13 +151,18 @@ class AccountTab(QtWidgets.QWidget):
 
         self.welcome_label = QtWidgets.QLabel("")
         self.welcome_label.setAlignment(QtCore.Qt.AlignCenter)
+        self.welcome_label.setStyleSheet("font-size: 16px; color: #2E7D32; font-weight: bold; margin: 20px;")
+
 
         # User stats label
         self.stats_label = QtWidgets.QLabel("")
         self.stats_label.setAlignment(QtCore.Qt.AlignCenter)
+        self.stats_label.setStyleSheet("color: #555; margin: 10px;")
 
         logout_btn = QtWidgets.QPushButton("Logout")
         logout_btn.clicked.connect(self.handle_logout)
+        logout_btn.setStyleSheet("QPushButton { background-color: #f44336; color: white; padding: 10px; border: none; border-radius: 4px; font-weight: bold; }")
+
 
         layout.addWidget(self.welcome_label)
         layout.addWidget(self.stats_label)
@@ -194,6 +214,7 @@ class AccountTab(QtWidgets.QWidget):
             self.login_pass.clear()
         else:
             self.status_label.setText(msg)
+            self.status_label.setStyleSheet("color: red; font-weight: bold; margin: 10px;")
     
     def handle_signup(self):
         """
@@ -206,15 +227,18 @@ class AccountTab(QtWidgets.QWidget):
 
         if not username or not password:
             self.status_label.setText("Please fill in all fields")
+            self.status_label.setStyleSheet("color: red; font-weight: bold; margin: 10px;")
             return
 
         if password != confirm:
             self.status_label.setText("Passwords do not match")
+            self.status_label.setStyleSheet("color: red; font-weight: bold; margin: 10px;")
             return
 
         success, msg = self.user_manager.signup(username, password)
         if success:
             self.status_label.setText("Account created! Please login.")
+            self.status_label.setStyleSheet("color: green; font-weight: bold; margin: 10px;")
 
             # Clear signup fields and switch to login
             self.signup_user.clear()
@@ -223,6 +247,7 @@ class AccountTab(QtWidgets.QWidget):
             self.show_login()
         else:
             self.status_label.setText(msg)
+            self.status_label.setStyleSheet("color: red; font-weight: bold; margin: 10px;")
     
     def handle_logout(self):
         """
@@ -234,5 +259,6 @@ class AccountTab(QtWidgets.QWidget):
         self.stacked.setCurrentWidget(self.login_widget)
         self.tab_buttons_widget.setVisible(True)
         self.status_label.setText("Logged out successfully")
+        self.status_label.setStyleSheet("color: blue; font-weight: bold; margin: 10px;")
         self.show_login()
     

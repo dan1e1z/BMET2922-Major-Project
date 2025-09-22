@@ -25,6 +25,7 @@ class HistoryTab(QtWidgets.QWidget):
         # Title
         title = QtWidgets.QLabel("Health History")
         title.setAlignment(QtCore.Qt.AlignCenter)
+        title.setStyleSheet("font-size: 18px; font-weight: bold; margin: 10px;")
         layout.addWidget(title)
 
         # Create scroll area for content
@@ -56,9 +57,12 @@ class HistoryTab(QtWidgets.QWidget):
         Create and return a widget displaying the user's health summary.
         """
         widget = QtWidgets.QGroupBox("Health Summary")
+        
         layout = QtWidgets.QVBoxLayout()
         
         self.summary_label = QtWidgets.QLabel("Please log in to view your health summary")
+        self.summary_label.setStyleSheet("padding: 15px; background-color: #f8f9fa; border-radius: 5px;")
+
         layout.addWidget(self.summary_label)
         
         widget.setLayout(layout)
@@ -109,6 +113,7 @@ class HistoryTab(QtWidgets.QWidget):
         
         # Analysis text
         self.analysis_label = QtWidgets.QLabel("")
+        self.analysis_label.setStyleSheet("padding: 10px; background-color: #e8f4f8; border-radius: 5px; margin: 5px;")
         self.analysis_label.setWordWrap(True)
         layout.addWidget(self.analysis_label)
         
@@ -311,11 +316,11 @@ class HistoryTab(QtWidgets.QWidget):
             if 60 <= bin_center <= 100:
                 normal_bins.append(i)
         
-        if normal_bins:
+        # if normal_bins:
             # Add text annotation for normal range
-            normal_text = pg.TextItem("Normal Range (60-100 BPM)", color=(0, 128, 0))
-            normal_text.setPos(normal_bins[0], max(hist) * 0.9)
-            self.plot.addItem(normal_text)
+            # normal_text = pg.TextItem("Normal Range (60-100 BPM)", color=(0, 128, 0))
+            # normal_text.setPos(normal_bins[0], max(hist) * 0.9)
+            # self.plot.addItem(normal_text)
         
         # Analysis
         avg_bpm = np.mean(all_bpms)
