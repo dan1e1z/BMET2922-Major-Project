@@ -75,8 +75,8 @@ class BluetoothMonitor(QtCore.QObject):
                             "temp": data[52]
                         }
                         # TESTING DEBUGGING PRINTS
-                        # print(f"Received packet: {packet_dict['sequence']}")
-                        # print(f"Received packet: {packet_dict['bpm']}")
+                        # print(f"Received packet sequence: {packet_dict['sequence']}")
+                        # print(f"Received packet bpm: {packet_dict['bpm']}")
                         self.packet_received.emit(packet_dict)
                         self.last_packet_time = time.time()
                     else:
