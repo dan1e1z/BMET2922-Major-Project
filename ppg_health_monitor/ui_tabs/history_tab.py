@@ -104,7 +104,7 @@ class HistoryTab(QtWidgets.QWidget):
         self.plot.showGrid(True, True)
         self.plot.setMouseEnabled(x=False, y=False)  # Disable mouse interaction
         self.plot.setMenuEnabled(False)  # Disable context menu
-        self.plot.enableAutoRange(False)  # Prevent auto-scaling
+        # self.plot.enableAutoRange(False)  # Prevent auto-scaling
         layout.addWidget(self.plot)
         
         # Analysis text
@@ -162,7 +162,10 @@ class HistoryTab(QtWidgets.QWidget):
         
         for session in history:
             avg_bpm = session.get("avg_bpm", 0)
-            all_bpms.append(avg_bpm)
+            if avg_bpm > 0:
+                all_bpms.append(avg_bpm)
+            all_low_count += session.get("abnormal_low", 0)
+            all_high_count += session.get("abnormal_high", 0)
 
         
         if all_bpms:
@@ -171,12 +174,17 @@ class HistoryTab(QtWidgets.QWidget):
             overall_max = np.max(all_bpms)
             
             # Health insights
+            health_status = "Normal"
+            if overall_avg < 60:
+                health_status = "Below Normal (Bradycardia)"
+            elif overall_avg > 100:
+                health_status = "Above Normal (Tachycardia)"
             
             summary_text = f"""
             <b>Overall Health Metrics:</b><br>
             • Total Sessions: {total_sessions}<br>
             • Total Recording Time: {total_duration:.1f} minutes<br>
-            • Average BPM: {overall_avg:.1f} <br>
+            • Average BPM: {overall_avg:.1f} ({health_status})<br>
             • BPM Range: {overall_min:.1f} - {overall_max:.1f}<br>
             • Abnormal Low Readings (&lt;40): {all_low_count}<br>
             • Abnormal High Readings (&gt;200): {all_high_count}<br>
@@ -210,11 +218,27 @@ class HistoryTab(QtWidgets.QWidget):
             min_bpm = session.get("min_bpm", 0)
             max_bpm = session.get("max_bpm", 0)
 
+            abnormal_low = session.get("abnormal_low", 0)
+            abnormal_high = session.get("abnormal_high", 0)
+            abnormal_text = f"Low: {abnormal_low}, High: {abnormal_high}"
+
+            low_thresh = session.get("bpm_low_threshold", 40)
+            high_thresh = session.get("bpm_high_threshold", 200)
+
             self.history_table.setItem(i, 0, QtWidgets.QTableWidgetItem(date_str))
             self.history_table.setItem(i, 1, QtWidgets.QTableWidgetItem(f"{duration:.1f}"))
             self.history_table.setItem(i, 2, QtWidgets.QTableWidgetItem(f"{avg_bpm:.1f}"))
             self.history_table.setItem(i, 3, QtWidgets.QTableWidgetItem(f"{min_bpm:.1f}"))
             self.history_table.setItem(i, 4, QtWidgets.QTableWidgetItem(f"{max_bpm:.1f}"))
+            self.history_table.setItem(i, 5, QtWidgets.QTableWidgetItem(abnormal_text))
+            self.history_table.setItem(i, 6, QtWidgets.QTableWidgetItem(str(low_thresh)))
+            self.history_table.setItem(i, 7, QtWidgets.QTableWidgetItem(str(high_thresh)))
+
+            if abnormal_low > 0 or abnormal_high > 0:
+                for col in range(8):
+                    item = self.history_table.item(i, col)
+                    if item:
+                        item.setBackground(QtGui.QColor(255, 235, 235))
   
     
     def update_plot(self, history):

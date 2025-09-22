@@ -219,6 +219,9 @@ class MainWindow(QtWidgets.QMainWindow):
         min_bpm = float(np.min(session_bpm))
         max_bpm = float(np.max(session_bpm))
 
+        abnormal_low = sum(1 for x in session_bpm if x < self.live_monitor_tab.bpm_low)
+        abnormal_high = sum(1 for x in session_bpm if x > self.live_monitor_tab.bpm_high)
+
         session_data = {
             "start": self.session_start_time.isoformat(),
             "end": end_time.isoformat(),
@@ -227,7 +230,21 @@ class MainWindow(QtWidgets.QMainWindow):
             "min_bpm": min_bpm,
             "max_bpm": max_bpm,
             "total_samples": len(session_bpm),
+            "abnormal_low": abnormal_low,
+            "abnormal_high": abnormal_high,
+            "bpm_low_threshold": self.live_monitor_tab.bpm_low,
+            "bpm_high_threshold": self.live_monitor_tab.bpm_high
         }
 
         self.user_manager.save_session(self.current_user, session_data)
+
+        if hasattr(self.history_tab, 'current_user') and self.history_tab.current_user == self.current_user:
+            self.history_tab.update_history_view()
+
+        self.system_log.add_log_entry(
+            f"Session saved: {duration:.1f} min, {len(session_bpm)} samples, avg BPM: {avg_bpm:.1f}, "
+            f"Thresholds: {self.live_monitor_tab.bpm_low}-{self.live_monitor_tab.bpm_high}"
+        )
+        print(f"Session saved for {self.current_user}: {duration:.1f} min, {len(session_bpm)} samples, "
+              f"avg BPM: {avg_bpm:.1f}, thresholds {self.live_monitor_tab.bpm_low}-{self.live_monitor_tab.bpm_high}")
         
