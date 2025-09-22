@@ -22,6 +22,10 @@ class LiveMonitorTab(QtWidgets.QWidget):
         self.visual_raw_pgg_data = []
         self.current_bpm = 0
 
+        # Default thresholds
+        self.bpm_low = 40
+        self.bpm_high = 200
+
         self.setup_ui()
 
     def setup_ui(self):
@@ -69,7 +73,37 @@ class LiveMonitorTab(QtWidgets.QWidget):
         # BPM display: shows current BPM value
         self.bpm_display = QtWidgets.QLabel("-- BPM")
         self.bpm_display.setAlignment(QtCore.Qt.AlignCenter)
+
+        # Stats
+        self.current_stats = QtWidgets.QLabel("")
+        self.current_stats.setAlignment(QtCore.Qt.AlignCenter)
+        self.current_stats.setWordWrap(True)
+
+        # Sliders for warning thresholds
+        self.low_slider = QtWidgets.QSlider(QtCore.Qt.Horizontal)
+        self.low_slider.setRange(20, 100)
+        self.low_slider.setValue(self.bpm_low)
+        self.low_slider.valueChanged.connect(self.update_thresholds)
+
+        self.high_slider = QtWidgets.QSlider(QtCore.Qt.Horizontal)
+        self.high_slider.setRange(120, 250)
+        self.high_slider.setValue(self.bpm_high)
+        self.high_slider.valueChanged.connect(self.update_thresholds)
+
+
+        self.low_label = QtWidgets.QLabel(f"Low BPM Warning: {self.bpm_low}")
+        self.high_label = QtWidgets.QLabel(f"High BPM Warning: {self.bpm_high}")
+
         controls_layout.addWidget(self.bpm_display)
+        controls_layout.addWidget(self.bpm_display)
+        controls_layout.addWidget(self.current_stats)
+        controls_layout.addWidget(self.low_label)
+        controls_layout.addWidget(self.low_slider)
+        controls_layout.addWidget(self.high_label)
+        controls_layout.addWidget(self.high_slider)
+        controls_layout.addStretch()
+
+
         controls_widget.setLayout(controls_layout)
 
         # Combine plots and controls horizontally
@@ -83,8 +117,6 @@ class LiveMonitorTab(QtWidgets.QWidget):
         main_layout.addWidget(self.system_log)
 
         # Set the main layout for this tab
-        self.setLayout(main_layout)
-
         self.setLayout(main_layout)
 
     def new_data_received(self, packet):
@@ -144,3 +176,9 @@ class LiveMonitorTab(QtWidgets.QWidget):
         else:
             self.session_info.setText("Not recording")
             self.current_stats.setText("Please log in to start recording session data")
+
+    def update_thresholds(self):
+        self.bpm_low = self.low_slider.value()
+        self.bpm_high = self.high_slider.value()
+        self.low_label.setText(f"Low BPM Warning: {self.bpm_low}")
+        self.high_label.setText(f"High BPM Warning: {self.bpm_high}")
