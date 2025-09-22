@@ -218,6 +218,7 @@ class LiveMonitorTab(QtWidgets.QWidget):
             if self.current_user:
                 # print("adding bpm to session")
                 self.session_bpm.append(bpm)
+                self.session_raw_ppg.extend(packet["ppg_values"])
         else:
             self.bpm_display.setText("-- BPM")
 

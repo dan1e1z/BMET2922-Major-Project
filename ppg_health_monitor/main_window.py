@@ -3,7 +3,7 @@ from PyQt5 import QtWidgets, QtCore, QtGui
 from datetime import datetime
 import numpy as np
 from ui_components import UserManager, SystemLog, BluetoothConnectionStatus
-from ui_tabs import AccountTab, LiveMonitorTab, HistoryTab
+from ui_tabs import AccountTab, LiveMonitorTab, HistoryTab, ResearchTab
 from bluetooth_monitor import BluetoothMonitor
 
 class MainWindow(QtWidgets.QMainWindow):
@@ -95,11 +95,16 @@ class MainWindow(QtWidgets.QMainWindow):
         self.live_monitor_tab = LiveMonitorTab(self.system_log)
         self.account_tab = AccountTab(self.user_manager)
         self.history_tab = HistoryTab()
+        self.research_tab = ResearchTab()
 
         self.tabs.addTab(self.live_monitor_tab, "Live Monitor")
         self.tabs.addTab(self.account_tab, "Account")
         self.tabs.addTab(self.history_tab, "Health History")
+        self.tabs.addTab(self.research_tab, "Research")
+
         self.tabs.setTabEnabled(2, False) 
+        self.tabs.setTabEnabled(3, False) 
+
         
         # Connect signals
         self.account_tab.login_successful.connect(self.handle_login)
@@ -123,7 +128,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
 
 
-    def handle_login(self, username):
+    def handle_login(self, username, account_type):
         """
         Handle user login event.
         Updates session state, status bar, logs the event, and switches to the Live Monitor tab.
@@ -136,6 +141,10 @@ class MainWindow(QtWidgets.QMainWindow):
 
         # Enable history tab and update
         self.tabs.setTabEnabled(2, True)
+
+        if account_type == "advanced":
+            self.tabs.setTabEnabled(3, True)
+            self.research_tab.start_session(username, self.user_manager)
         self.history_tab.start_session(username, self.user_manager)
 
         # Start session in live monitor tab
@@ -167,6 +176,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.current_user = None
         self.session_start_time = None
         self.tabs.setTabEnabled(2, False)
+        self.tabs.setTabEnabled(3, False)
+
         
         # Reset live monitor tab
         self.live_monitor_tab.current_user = None
@@ -250,6 +261,7 @@ class MainWindow(QtWidgets.QMainWindow):
     def save_current_session(self):
         # print("save current session")
 
+        session_raw_ppg = self.live_monitor_tab.session_raw_ppg
         session_bpm = self.live_monitor_tab.session_bpm
         end_time = datetime.now()
         duration = (end_time - self.session_start_time).total_seconds() / 60
@@ -272,7 +284,8 @@ class MainWindow(QtWidgets.QMainWindow):
             "abnormal_low": abnormal_low,
             "abnormal_high": abnormal_high,
             "bpm_low_threshold": self.live_monitor_tab.bpm_low,
-            "bpm_high_threshold": self.live_monitor_tab.bpm_high
+            "bpm_high_threshold": self.live_monitor_tab.bpm_high,
+            "raw_ppg": session_raw_ppg
         }
 
         self.user_manager.save_session(self.current_user, session_data)
