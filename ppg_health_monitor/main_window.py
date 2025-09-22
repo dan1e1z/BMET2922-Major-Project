@@ -77,16 +77,16 @@ class MainWindow(QtWidgets.QMainWindow):
         self.tabs = QtWidgets.QTabWidget()
 
         self.live_monitor_tab = LiveMonitorTab(self.system_log)
-        self.login_tab = AccountTab(self.user_manager)
+        self.account_tab = AccountTab(self.user_manager)
         self.history_tab = HistoryTab()
 
         self.tabs.addTab(self.live_monitor_tab, "Live Monitor")
-        self.tabs.addTab(self.login_tab, "Account")
+        self.tabs.addTab(self.account_tab, "Account")
         self.tabs.addTab(self.history_tab, "Health History")
         
         # Connect signals
-        self.login_tab.login_successful.connect(self.handle_login)
-        self.login_tab.logout_requested.connect(self.handle_logout)
+        self.account_tab.login_successful.connect(self.handle_login)
+        self.account_tab.logout_requested.connect(self.handle_logout)
         
         layout.addWidget(self.tabs)
 
@@ -96,7 +96,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
         # Exit button to close the application
         exit_btn = QtWidgets.QPushButton("Exit Application")
-        exit_btn.clicked.connect(self.close)
+        exit_btn.clicked.connect(self.close_window)
         layout.addWidget(exit_btn)
 
         # Set the layout on the central widget
@@ -115,6 +115,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self.session_start_time = datetime.now()
         self.expected_sequence = 0
 
+        # Start session in live monitor tab
+        self.live_monitor_tab.start_session(username)
+
         # Update status bar with session info
         self.status_bar.setText(f"Recording session for {username} - Session started at {self.session_start_time.strftime('%H:%M:%S')}")
 
@@ -129,19 +132,49 @@ class MainWindow(QtWidgets.QMainWindow):
         Handle user logout event.
         Logs the event and updates the status bar.
         """
+
+        if self.current_user and self.live_monitor_tab.session_bpm:
+            self.save_current_session()
+
         # Log the logout event
         if self.current_user:
             self.system_log.add_log_entry(f"User '{self.current_user}' logged out")
 
-        # Update status bar
+        # Reset state
+        self.current_user = None
+        self.session_start_time = None
+        self.tabs.setTabEnabled(2, False)
+        
+        # Reset live monitor tab
+        self.live_monitor_tab.current_user = None
+        self.live_monitor_tab.session_bpm = []
+        self.live_monitor_tab.session_start_time = None
+        
+        # Update status
         self.status_bar.setText("Logged out - Please log in to start recording session data")
-
 
     def close_window(self):
         """
         Handle closing the application and log the event.
         """
-        self.system_log.add_log_entry("Application closed")
+        # DEBUG PRINTS
+        # print("closing window")
+        # print("self.current_user:", self.current_user)
+        # print("self.live_monitor_tab.session_bpm:", self.live_monitor_tab.session_bpm)
+
+        # Save current session if user is logged in & has session data
+        if self.current_user and self.live_monitor_tab.session_bpm:
+            # print("saving session")
+            self.save_current_session()
+        
+        # Log application exit
+        self.system_log.add_log_entry("Application closing")
+        
+        # Stop serial reader
+        self.bluetooth_monitor.running = False
+        self.bluetooth_monitor_thread.quit()
+        self.bluetooth_monitor_thread.wait()
+
         QtWidgets.QApplication.quit()
 
 
@@ -158,10 +191,10 @@ class MainWindow(QtWidgets.QMainWindow):
             self.system_log.add_log_entry(alarm_message)
 
         if self.current_user:
-            pulse = packet.get('pulse', 0)
-            current_samples = len(self.live_monitor_tab.session_pulses)
+            bpm = packet.get('bpm', 0)
+            current_samples = len(self.live_monitor_tab.session_bpm)
             duration = (datetime.now() - self.session_start_time).total_seconds() / 60
-            self.status_bar.setText(f"Recording for {self.current_user} | Current BPM: {pulse:.1f} | Duration: {duration:.1f}min | Samples: {current_samples}")
+            self.status_bar.setText(f"Recording for {self.current_user} | Current BPM: {bpm:.1f} | Duration: {duration:.1f}min | Samples: {current_samples}")
 
     def handle_connection_status(self, connected, message):
         self.connection_status.update_status(connected, message)
@@ -169,4 +202,27 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def handle_connection_timeout(self):
         pass
+
+    def save_current_session(self):
+        print("save current session")
+
+        session_bpm = self.live_monitor_tab.session_bpm
+        end_time = datetime.now()
+        duration = (end_time - self.session_start_time).total_seconds() / 60
+
+        avg_bpm = float(np.mean(session_bpm))
+        min_bpm = float(np.min(session_bpm))
+        max_bpm = float(np.max(session_bpm))
+
+        session_data = {
+            "start": self.session_start_time.isoformat(),
+            "end": end_time.isoformat(),
+            "duration_minutes": duration,
+            "avg_bpm": avg_bpm,
+            "min_bpm": min_bpm,
+            "max_bpm": max_bpm,
+            "total_samples": len(session_bpm),
+        }
+
+        self.user_manager.save_session(self.current_user, session_data)
         

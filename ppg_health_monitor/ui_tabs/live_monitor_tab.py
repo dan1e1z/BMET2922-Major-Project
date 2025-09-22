@@ -1,6 +1,8 @@
 from PyQt5 import QtWidgets, QtCore
 import pyqtgraph as pg
 import numpy as np 
+from datetime import datetime
+
 
 class LiveMonitorTab(QtWidgets.QWidget):
     def __init__(self, system_log):
@@ -40,7 +42,7 @@ class LiveMonitorTab(QtWidgets.QWidget):
         self.bpm_plot.showGrid(True, True)  # Show grid lines
         self.bpm_plot.setMouseEnabled(x=False, y=False)  # Disable mouse interaction
         self.bpm_plot.setMenuEnabled(False)  # Disable context menu
-        self.bpm_plot.enableAutoRange(False)  # Prevent auto-scaling
+        # self.bpm_plot.enableAutoRange(False)  # Prevent auto-scaling
         self.bpm_curve = self.bpm_plot.plot(pen=pg.mkPen('r', width=2))  # Red curve for BPM
         plots_layout.addWidget(self.bpm_plot)
 
@@ -51,7 +53,7 @@ class LiveMonitorTab(QtWidgets.QWidget):
         self.raw_ppg_plot.showGrid(True, True)  # Show grid lines
         self.raw_ppg_plot.setMouseEnabled(x=False, y=False)  # Disable mouse interaction
         self.raw_ppg_plot.setMenuEnabled(False)  # Disable context menu
-        self.raw_ppg_plot.enableAutoRange(False)  # Prevent auto-scaling
+        # self.raw_ppg_plot.enableAutoRange(False)  # Prevent auto-scaling
         self.raw_ppg_curve = self.raw_ppg_plot.plot(pen=pg.mkPen('b', width=2))  # Blue curve for PPG
         plots_layout.addWidget(self.raw_ppg_plot)
 
@@ -90,6 +92,7 @@ class LiveMonitorTab(QtWidgets.QWidget):
         # DEBUGGING PRINTS
         # print("packet: ", packet)
         # print ("bpm: ", packet['bpm'])
+        # print("ppg_values:", packet["ppg_values"])
 
         bpm = packet['bpm']
         self.current_bpm = packet['bpm']
@@ -98,7 +101,9 @@ class LiveMonitorTab(QtWidgets.QWidget):
             self.bpm_display.setText(f"{bpm:.1f} BPM")
 
             # add bpm to logined user session data
+            # print("self.current_user: ", self.current_user)
             if self.current_user:
+                # print("adding bpm to session")
                 self.session_bpm.append(bpm)
         else:
             self.bpm_display.setText("-- BPM")
@@ -116,3 +121,26 @@ class LiveMonitorTab(QtWidgets.QWidget):
             self.bpm_curve.setData(np.arange(len(self.visual_bpm_data)), np.array(self.visual_bpm_data))
         if len(self.visual_raw_pgg_data) > 1:
             self.raw_ppg_curve.setData(np.arange(len(self.visual_raw_pgg_data)), np.array(self.visual_raw_pgg_data))
+
+
+    def start_session(self, username):
+        self.current_user = username
+        self.session_start_time = datetime.now()
+        self.update_session_info()
+
+    def update_session_info(self):
+        if self.current_user and self.session_start_time:
+            duration = datetime.now() - self.session_start_time
+            minutes = duration.total_seconds() / 60
+            self.session_info.setText(f"Recording: {minutes:.1f} min | Samples: {len(self.session_bpm)}")
+            
+            # Update current stats
+            if self.session_bpm:
+                current_bpm = self.session_bpm[-1] if self.session_bpm else 0
+                avg_bpm = np.mean(self.session_bpm)
+                
+                stats_text = f"Current: {current_bpm:.1f} BPM\nAvg: {avg_bpm:.1f}"
+                self.current_stats.setText(stats_text)
+        else:
+            self.session_info.setText("Not recording")
+            self.current_stats.setText("Please log in to start recording session data")
