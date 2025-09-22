@@ -101,19 +101,32 @@ class LiveMonitorTab(QtWidgets.QWidget):
         # Controls layout for widgets like BPM display and future controls
         controls_layout = QtWidgets.QVBoxLayout()
         controls_widget = QtWidgets.QWidget()
+        controls_widget.setStyleSheet("background-color: #f0f0f0; border-radius: 10px; padding: 10px; border: 1px solid #ccc;")
+
 
         # BPM display: shows current BPM value
         self.bpm_display = QtWidgets.QLabel("-- BPM")
         self.bpm_display.setAlignment(QtCore.Qt.AlignCenter)
+        self.bpm_display.setStyleSheet("font-size: 48px; font-weight: bold; color: #2E7D32;")
 
         # Alarm
         self.alarm_widget = QtWidgets.QLabel("")
         self.alarm_widget.setAlignment(QtCore.Qt.AlignCenter)
         self.alarm_widget.setVisible(False) # Hidden until alarm triggered
+        self.alarm_widget.setStyleSheet("""
+            font-size: 16px; 
+            font-weight: bold; 
+            color: white; 
+            background-color: #f44336; 
+            border: 3px solid #d32f2f; 
+            border-radius: 10px; 
+            padding: 10px; 
+        """)
 
         # Stats
         self.current_stats = QtWidgets.QLabel("")
         self.current_stats.setAlignment(QtCore.Qt.AlignCenter)
+        self.current_stats.setStyleSheet("background-color: #e0e0e0; padding: 10px; border-radius: 5px; margin: 5px;")
         self.current_stats.setWordWrap(True)
 
         # Sliders for warning thresholds
