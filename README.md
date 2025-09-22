@@ -12,6 +12,7 @@ A real-time Photoplethysmography (PPG) signal visualizer and heart rate monitor 
   - [Getting Started](#getting-started)
     - [Prerequisites](#prerequisites)
     - [Installation](#installation)
+  - [Usage](#usage)
 
 ## About The Project
 
@@ -70,7 +71,7 @@ You can install the necessary Python packages using the `requirements.txt` file.
     You can install all dependencies from the `requirements.txt` file.
     ```sh
     pip install -r requirements.txt
-   ```
+    ```
 
     Alternatively, you can install the project in **editable mode** using its pyproject.toml file.    
     ```sh
