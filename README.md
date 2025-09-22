@@ -12,7 +12,6 @@ A real-time Photoplethysmography (PPG) signal visualizer and heart rate monitor 
   - [Getting Started](#getting-started)
     - [Prerequisites](#prerequisites)
     - [Installation](#installation)
-  - [Usage](#usage)
 
 ## About The Project
 
@@ -44,22 +43,43 @@ You can install the necessary Python packages using the `requirements.txt` file.
 
 ### Installation
 
-1. Clone the repo
+1.  **Clone the repository**
    ```sh
    git clone https://github.com/your_username/ppg_health_monitor.git
-   ```
-2. Navigate to the project directory
-   ```sh
    cd ppg_health_monitor
    ```
-3. Install Python packages
-   ```sh
-   pip install -r requirements.txt
+
+2.  **Create and activate a virtual environment**
+
+    This is highly recommended to avoid conflicts with other Python projects.
+
+    *   On **macOS/Linux**:
+        ```sh
+        python3 -m venv venv
+        source venv/bin/activate
+        ```
+
+    *   On **Windows**:
+        ```sh
+        python -m venv venv
+        .\venv\Scripts\activate
+        ```
+
+3.  **Install the required packages**
+
+    You can install all dependencies from the `requirements.txt` file.
+    ```sh
+    pip install -r requirements.txt
    ```
+
+    Alternatively, you can install the project in **editable mode** using its pyproject.toml file.    
+    ```sh
+    pip install -e .
+    ```
 
 ## Usage
 
-To run the application, execute the `main_window.py` script from the project's root directory:
+To run the application, ensure your virtual environment is activated and execute the `main.py` script from the project's root directory:
 ```sh
-python ppg_health_monitor/main_window.py
+python ppg_health_monitor/main.py
 ```
