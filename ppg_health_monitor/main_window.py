@@ -83,6 +83,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.tabs.addTab(self.live_monitor_tab, "Live Monitor")
         self.tabs.addTab(self.account_tab, "Account")
         self.tabs.addTab(self.history_tab, "Health History")
+        self.tabs.setTabEnabled(2, False) 
         
         # Connect signals
         self.account_tab.login_successful.connect(self.handle_login)
@@ -114,6 +115,10 @@ class MainWindow(QtWidgets.QMainWindow):
         self.current_user = username
         self.session_start_time = datetime.now()
         self.expected_sequence = 0
+
+        # Enable history tab and update
+        self.tabs.setTabEnabled(2, True)
+        self.history_tab.start_session(username, self.user_manager)
 
         # Start session in live monitor tab
         self.live_monitor_tab.start_session(username)
@@ -204,7 +209,7 @@ class MainWindow(QtWidgets.QMainWindow):
         pass
 
     def save_current_session(self):
-        print("save current session")
+        # print("save current session")
 
         session_bpm = self.live_monitor_tab.session_bpm
         end_time = datetime.now()
