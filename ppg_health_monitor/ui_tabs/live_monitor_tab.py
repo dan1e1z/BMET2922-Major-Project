@@ -10,7 +10,7 @@ class LiveMonitorTab(QtWidgets.QWidget):
     A PyQt5 widget for real-time heart rate monitoring with visual plots and alarm system.
     
     This class provides:
-    - Real-time BPM and raw PPG signal visualization
+    - Real-time BPM and raw PPG signal visualization with a sliding window
     - User session management and data logging
     - Configurable BPM alarm thresholds with visual/audio alerts
     - Live statistics display
@@ -22,114 +22,112 @@ class LiveMonitorTab(QtWidgets.QWidget):
         session_bpm (list): BPM readings for current session
         visual_bpm_data (list): BPM data used for plotting
         visual_raw_pgg_data (list): Raw PPG data used for plotting
+        time_bpm_data (list): Timestamps for BPM data points
+        time_ppg_data (list): Timestamps for raw PPG data points
+        last_packet_time (float): Time of the last received data packet
+        plot_window_seconds (int): Duration of the visible plot window in seconds
+        is_auto_scrolling (bool): Flag to control if plots auto-scroll to the latest data
         current_bpm (float): Most recent BPM reading
-        bpm_low (int): Lower threshold for BPM alarm (default: 40)
-        bpm_high (int): Upper threshold for BPM alarm (default: 200)
+        bpm_low (int): Lower threshold for BPM alarm
+        bpm_high (int): Upper threshold for BPM alarm
         alarm_active (bool): Whether alarm is currently triggered
     """
     def __init__(self, system_log):
         super().__init__()
 
         # User/session management variables
-        self.current_user = None  # Currently logged in user
-        self.session_raw_ppg = []  # Raw PPG data for current session
-        self.session_start_time = None  # Timestamp when session started
-        self.session_bpm = []  # BPM readings collected during session
+        self.current_user = None
+        self.session_raw_ppg = []
+        self.session_start_time = None
+        self.session_bpm = []
 
-        # System log widget for displaying messages
+        # System log widget
         self.system_log = system_log
 
-        # Data arrays used for real-time visualization
-        self.visual_bpm_data = []  # BPM values to display on chart
-        self.visual_raw_pgg_data = []  # Raw PPG values to display on chart
-        self.current_bpm = 0  # Most recent BPM reading
+        # Data arrays for visualization
+        self.visual_bpm_data = []
+        self.visual_raw_pgg_data = []
+        self.time_bpm_data = []
+        self.time_ppg_data = []
+        self.last_packet_time = 0
+        
+        # Plot window settings
+        self.plot_window_seconds = 5
+        self.is_auto_scrolling = True
 
-        # Default alarm thresholds (adjustable via sliders)
-        self.bpm_low = 40   # Lower BPM threshold - triggers "low pulse" alarm
-        self.bpm_high = 200  # Upper BPM threshold - triggers "high pulse" alarm
-
-        # Alarm system state
-        self.alarm_active = False  # Whether an alarm condition is currently active
+        # BPM and alarm variables
+        self.current_bpm = 0
+        self.bpm_low = 40
+        self.bpm_high = 200
+        self.alarm_active = False
 
         # Initialize the user interface
         self.setup_ui()
 
     def setup_ui(self):
         """
-        Set up the UI for the live monitor tab, including plots and controls with proper layout and stretch factors.
-        
-        Creates:
-        - Two real-time plots (BPM and raw PPG)
-        - BPM display and alarm indicators
-        - Threshold adjustment sliders
-        - Session information display
+        Set up the UI for the live monitor tab, including plots, controls, and the new plot slider.
         """
-        # Main vertical layout for the tab
         main_layout = QtWidgets.QVBoxLayout()
-
-        # --- Plots layout ---
-        # This layout will stack the BPM and raw PPG plots vertically
         plots_layout = QtWidgets.QVBoxLayout()
 
-        # BPM Plot: Real-time heart rate visualization
+        # BPM Plot
         self.bpm_plot = pg.PlotWidget()
-        self.bpm_plot.setLabel('left', 'BPM')  # Y-axis label
-        self.bpm_plot.setLabel('bottom', 'Time', units='s')  # X-axis label
-        self.bpm_plot.showGrid(True, True)  # Show grid lines
-        self.bpm_plot.setMouseEnabled(x=False, y=False)  # Disable mouse interaction
-        self.bpm_plot.setMenuEnabled(False)  # Disable context menu
-        # self.bpm_plot.enableAutoRange(False)  # Prevent auto-scaling
-        self.bpm_curve = self.bpm_plot.plot(pen=pg.mkPen('r', width=2))  # Red curve for BPM
+        self.bpm_plot.setLabel('left', 'BPM')
+        self.bpm_plot.setLabel('bottom', 'Time', units='s')
+        self.bpm_plot.showGrid(True, True)
+        self.bpm_plot.setMouseEnabled(x=False, y=False)
+        self.bpm_plot.setMenuEnabled(False)
+        self.bpm_curve = self.bpm_plot.plot(pen=pg.mkPen('r', width=2))
         plots_layout.addWidget(self.bpm_plot)
 
-        # Raw PPG Plot: shows raw photoplethysmogram signal
+        # Raw PPG Plot
         self.raw_ppg_plot = pg.PlotWidget()
-        self.raw_ppg_plot.setLabel('left', 'PPG Raw')  # Y-axis label
-        self.raw_ppg_plot.setLabel('bottom', 'Time', units='s')  # X-axis label
-        self.raw_ppg_plot.showGrid(True, True)  # Show grid lines
-        self.raw_ppg_plot.setMouseEnabled(x=False, y=False)  # Disable mouse interaction
-        self.raw_ppg_plot.setMenuEnabled(False)  # Disable context menu
-        # self.raw_ppg_plot.enableAutoRange(False)  # Prevent auto-scaling
-        self.raw_ppg_curve = self.raw_ppg_plot.plot(pen=pg.mkPen('b', width=2))  # Blue curve for PPG
+        self.raw_ppg_plot.setLabel('left', 'PPG Raw')
+        self.raw_ppg_plot.setLabel('bottom', 'Time', units='s')
+        self.raw_ppg_plot.showGrid(True, True)
+        self.raw_ppg_plot.setMouseEnabled(x=False, y=False)
+        self.raw_ppg_plot.setMenuEnabled(False)
+        self.raw_ppg_curve = self.raw_ppg_plot.plot(pen=pg.mkPen('b', width=2))
         plots_layout.addWidget(self.raw_ppg_plot)
 
-        # Session info label (aligned right, can show user/session status)
+        # Plot controls (slider and checkbox)
+        plot_controls_layout = QtWidgets.QHBoxLayout()
+        self.auto_scroll_checkbox = QtWidgets.QCheckBox("Auto-Scroll")
+        self.auto_scroll_checkbox.setChecked(self.is_auto_scrolling)
+        self.auto_scroll_checkbox.stateChanged.connect(self.toggle_auto_scroll)
+        plot_controls_layout.addWidget(self.auto_scroll_checkbox)
+
+        self.plot_slider = QtWidgets.QSlider(QtCore.Qt.Horizontal)
+        self.plot_slider.setRange(0, 0)
+        self.plot_slider.valueChanged.connect(self.scroll_plots)
+        self.plot_slider.sliderPressed.connect(self.disable_auto_scroll)
+        plot_controls_layout.addWidget(self.plot_slider)
+        plots_layout.addLayout(plot_controls_layout)
+
+        # Session info
         self.session_info = QtWidgets.QLabel("Not logged in")
         self.session_info.setAlignment(QtCore.Qt.AlignRight)
 
-        # --- Right side controls ---
-        # Controls layout for widgets like BPM display and future controls
+        # Right side controls
         controls_layout = QtWidgets.QVBoxLayout()
         controls_widget = QtWidgets.QWidget()
         controls_widget.setStyleSheet("background-color: #f0f0f0; border-radius: 10px; padding: 10px; border: 1px solid #ccc;")
 
-
-        # BPM display: shows current BPM value
         self.bpm_display = QtWidgets.QLabel("-- BPM")
         self.bpm_display.setAlignment(QtCore.Qt.AlignCenter)
         self.bpm_display.setStyleSheet("font-size: 48px; font-weight: bold; color: #2E7D32;")
 
-        # Alarm
         self.alarm_widget = QtWidgets.QLabel("")
         self.alarm_widget.setAlignment(QtCore.Qt.AlignCenter)
-        self.alarm_widget.setVisible(False) # Hidden until alarm triggered
-        self.alarm_widget.setStyleSheet("""
-            font-size: 16px; 
-            font-weight: bold; 
-            color: white; 
-            background-color: #f44336; 
-            border: 3px solid #d32f2f; 
-            border-radius: 10px; 
-            padding: 10px; 
-        """)
+        self.alarm_widget.setVisible(False)
+        self.alarm_widget.setStyleSheet("font-size: 16px; font-weight: bold; color: white; background-color: #f44336; border: 3px solid #d32f2f; border-radius: 10px; padding: 10px;")
 
-        # Stats
         self.current_stats = QtWidgets.QLabel("")
         self.current_stats.setAlignment(QtCore.Qt.AlignCenter)
         self.current_stats.setStyleSheet("background-color: #e0e0e0; padding: 10px; border-radius: 5px; margin: 5px;")
         self.current_stats.setWordWrap(True)
 
-        # Sliders for warning thresholds
         self.low_slider = QtWidgets.QSlider(QtCore.Qt.Horizontal)
         self.low_slider.setRange(20, 100)
         self.low_slider.setValue(self.bpm_low)
@@ -140,11 +138,9 @@ class LiveMonitorTab(QtWidgets.QWidget):
         self.high_slider.setValue(self.bpm_high)
         self.high_slider.valueChanged.connect(self.update_thresholds)
 
-        # Labels showing current threshold values
         self.low_label = QtWidgets.QLabel(f"Low BPM Warning: {self.bpm_low}")
         self.high_label = QtWidgets.QLabel(f"High BPM Warning: {self.bpm_high}")
 
-        # Add all controls to the layout
         controls_layout.addWidget(self.bpm_display)
         controls_layout.addWidget(self.alarm_widget)
         controls_layout.addWidget(self.current_stats)
@@ -153,70 +149,37 @@ class LiveMonitorTab(QtWidgets.QWidget):
         controls_layout.addWidget(self.high_label)
         controls_layout.addWidget(self.high_slider)
         controls_layout.addStretch()
-
-        
         controls_widget.setLayout(controls_layout)
 
-         # Combine plots (75%) and controls (25%) horizontally
         content_layout = QtWidgets.QHBoxLayout()
-        content_layout.addLayout(plots_layout, 3) # 3/4 of space for plots
-        content_layout.addWidget(controls_widget, 1) # 1/4 of space for controls
+        content_layout.addLayout(plots_layout, 3)
+        content_layout.addWidget(controls_widget, 1)
         main_layout.addLayout(content_layout)
-
-        # Add system log widget at the bottom
         main_layout.addWidget(self.system_log)
-
-        # Set the main layout for this tab
         self.setLayout(main_layout)
 
-        #  --- Alarm Blinking System ---
-        # Timer for creating blinking alarm effect
         self.alarm_timer = QtCore.QTimer()
         self.alarm_timer.timeout.connect(self.blink_alarm)
         self.alarm_visible = True
 
     def new_data_received(self, packet):
         """
-        Process new data packet from heart rate sensor.
-        
-        This method:
-        1. Extracts BPM and PPG values from the packet
-        2. Updates the current BPM display
-        3. Checks for alarm conditions (BPM too high/low)
-        4. Adds data to session if user is logged in
-        5. Updates the real-time plots
-        
-        Args:
-            packet (dict): Data packet containing:
-                - 'bpm': Current beats per minute reading
-                - 'ppg_values': List of raw PPG sensor values
-                
-        Returns:
-            str or None: Alarm message if alarm state changed, None otherwise
+        Process new data packet, generate timestamps, and update plots.
         """
-        
-        # DEBUGGING PRINTS
-        # print("packet: ", packet)
-        # print ("bpm: ", packet['bpm'])
-        # print("ppg_values:", packet["ppg_values"])
-
         bpm = packet['bpm']
-        self.current_bpm = packet['bpm']
+        self.current_bpm = bpm
 
-        if  bpm > 0:
-            # Update the large BPM display
+        # Assumes packets arrive roughly 1 per second
+        current_time = self.last_packet_time
+        self.last_packet_time += 1
+
+        if bpm > 0:
             self.bpm_display.setText(f"{bpm:.1f} BPM")
-
-            # check for valid bpm (low < bpm < high)
             alarm_msg = self.check_bpm_alarm()
             if alarm_msg:
                 return alarm_msg
             
-
-            # add bpm to logined user session data
-            # print("self.current_user: ", self.current_user)
             if self.current_user:
-                # print("adding bpm to session")
                 self.session_bpm.append(bpm)
                 self.session_raw_ppg.extend(packet["ppg_values"])
         else:
@@ -224,55 +187,96 @@ class LiveMonitorTab(QtWidgets.QWidget):
 
         # Store data for plotting
         self.visual_bpm_data.append(bpm)
-        self.visual_raw_pgg_data.extend(packet["ppg_values"])
+        self.time_bpm_data.append(current_time)
+        
+        ppg_values = packet["ppg_values"]
+        # Generate timestamps for the 50 PPG samples over the last second
+        ppg_times = np.linspace(current_time - 1, current_time, len(ppg_values), endpoint=False)
+        self.visual_raw_pgg_data.extend(ppg_values)
+        self.time_ppg_data.extend(ppg_times)
 
-        # update render plots
         self.update_plots()
         return
 
     def update_plots(self):
         """
-        Update both BPM and PPG plots with latest data.
-        
-        This method redraws the plot curves with the accumulated data arrays.
-        Only updates if there's sufficient data (> 1 point) to avoid errors.
+        Update plot data and view window.
         """
-        if len(self.visual_bpm_data) > 1:
-            self.bpm_curve.setData(np.arange(len(self.visual_bpm_data)), np.array(self.visual_bpm_data))
-        if len(self.visual_raw_pgg_data) > 1:
-            self.raw_ppg_curve.setData(np.arange(len(self.visual_raw_pgg_data)), np.array(self.visual_raw_pgg_data))
+        if len(self.time_bpm_data) > 1:
+            self.bpm_curve.setData(self.time_bpm_data, self.visual_bpm_data)
+        if len(self.time_ppg_data) > 1:
+            self.raw_ppg_curve.setData(self.time_ppg_data, self.visual_raw_pgg_data)
+        
+        self.update_plot_view()
+        self.update_slider()
 
+    def update_plot_view(self):
+        """
+        Sets the visible range of the plots based on slider position or auto-scroll.
+        """
+        max_time = self.time_ppg_data[-1] if self.time_ppg_data else 0
+        
+        if self.is_auto_scrolling:
+            start_time = max(0, max_time - self.plot_window_seconds)
+        else:
+            start_time = self.plot_slider.value() / 100.0
+            
+        end_time = start_time + self.plot_window_seconds
+        self.bpm_plot.setXRange(start_time, end_time, padding=0)
+        self.raw_ppg_plot.setXRange(start_time, end_time, padding=0)
+
+    def update_slider(self):
+        """
+        Updates the range and position of the time-scroll slider IF auto-scrolling.
+        """
+        if self.is_auto_scrolling:
+            max_time = self.time_ppg_data[-1] if self.time_ppg_data else 0
+            scrollable_duration = max_time - self.plot_window_seconds
+
+            if scrollable_duration > 0:
+                self.plot_slider.setMaximum(int(scrollable_duration * 100))
+                self.plot_slider.blockSignals(True)
+                self.plot_slider.setValue(self.plot_slider.maximum())
+                self.plot_slider.blockSignals(False)
+            else:
+                self.plot_slider.setMaximum(0)
+
+    def scroll_plots(self, value):
+        """
+        Update the plot view when the slider is moved manually.
+        """
+        if not self.is_auto_scrolling:
+            self.update_plot_view()
+
+    def disable_auto_scroll(self):
+        """
+        Disables auto-scrolling when the user interacts with the slider.
+        """
+        self.auto_scroll_checkbox.setChecked(False)
+
+    def toggle_auto_scroll(self, state):
+        """
+        Enables or disables auto-scrolling based on the checkbox state.
+        """
+        self.is_auto_scrolling = (state == QtCore.Qt.Checked)
+        if self.is_auto_scrolling:
+            self.update_slider()
+            self.update_plot_view()
 
     def start_session(self, username):
-        """
-        Start a new monitoring session for a user.
-        
-        Args:
-            username (str): Name of user starting the session
-        """
         self.current_user = username
         self.session_start_time = datetime.now()
         self.update_session_info()
 
     def update_session_info(self):
-        """
-        Update the session information display with current stats.
-        
-        Shows:
-        - Recording duration
-        - Number of BPM samples collected
-        - Current and average BPM for the session
-        """
         if self.current_user and self.session_start_time:
             duration = datetime.now() - self.session_start_time
             minutes = duration.total_seconds() / 60
             self.session_info.setText(f"Recording: {minutes:.1f} min | Samples: {len(self.session_bpm)}")
             
-            # Update current session statistics
             if self.session_bpm:
                 current_bpm = self.session_bpm[-1] if self.session_bpm else 0
                 avg_bpm = np.mean(self.session_bpm)
-                
                 stats_text = f"Current: {current_bpm:.1f} BPM\nAvg: {avg_bpm:.1f}"
                 self.current_stats.setText(stats_text)
         else:
@@ -280,98 +284,39 @@ class LiveMonitorTab(QtWidgets.QWidget):
             self.current_stats.setText("Please log in to start recording session data")
 
     def update_thresholds(self):
-        """
-        Update BPM alarm thresholds based on slider values.
-        
-        Called automatically when user moves either threshold slider.
-        Updates both the internal threshold values and the display labels.
-        """
-        # Get new threshold values from sliders
         self.bpm_low = self.low_slider.value()
         self.bpm_high = self.high_slider.value()
-
-        # Update the labels to show current threshold values
         self.low_label.setText(f"Low BPM Warning: {self.bpm_low}")
         self.high_label.setText(f"High BPM Warning: {self.bpm_high}")
 
     def blink_alarm(self):
-        """
-        Create blinking effect for alarm widget.
-        
-        This method is called repeatedly by the alarm timer when an alarm is active.
-        It toggles the visibility of the alarm widget to create a blinking effect
-        that draws attention to the alarm condition.
-        """
         if self.alarm_active:
-            # Toggle visibility state
             self.alarm_visible = not self.alarm_visible
             self.alarm_widget.setVisible(self.alarm_visible)
 
     def check_bpm_alarm(self):
-        """
-        Check current BPM against thresholds and manage alarm state.
-        
-        **HOW THE ALARM SYSTEM WORKS:**
-        
-        1. **Threshold Comparison**: Compares current BPM against user-configurable 
-           low and high thresholds (default: 40-200 BPM)
-           
-        2. **Alarm Activation**: 
-           - If BPM < low_threshold: Activates "PULSE LOW" alarm
-           - If BPM > high_threshold: Activates "PULSE HIGH" alarm
-           - If BPM within range: Deactivates any active alarm
-           
-        3. **Visual Feedback**:
-           - Shows warning message in alarm_widget with current BPM
-           - Starts blinking timer (500ms intervals) for attention-grabbing effect
-           - Uses red text to indicate dangerous condition
-           
-        4. **State Management**:
-           - Tracks previous alarm state to detect transitions
-           - Only starts blinking timer when alarm first activates
-           - Stops timer and hides alarm when BPM returns to normal
-           
-        5. **Return Messages**:
-           - Returns status message when alarm state changes
-           - Used by calling code for logging/notification purposes
-           - Messages: "Pulse Low", "Pulse High", "Pulse Normal"
-        
-        Returns:
-            str or None: Message indicating alarm state change, or None if no change
-        """
-        # Store previous alarm state to detect transitions
         prev_state = self.alarm_active
         msg = None
 
-        # Check for LOW BPM alarm condition
         if self.current_bpm < self.bpm_low:
             self.alarm_active = True
-            # Set alarm message with current BPM value
             self.alarm_widget.setText(f"WARNING: PULSE LOW: {self.current_bpm:.1f} BPM")
-            
-            # Start blinking only if this is a new alarm (state changed)
             if not prev_state:
-                self.alarm_timer.start(500)  # Blink every 500ms
-                msg = "Pulse Low"  # Message for system log
+                self.alarm_timer.start(500)
+                msg = "Pulse Low"
                 
-        # Check for HIGH BPM alarm condition  
         elif self.current_bpm > self.bpm_high:
             self.alarm_active = True
-            # Set alarm message with current BPM value
             self.alarm_widget.setText(f"WARNING: PULSE HIGH: {self.current_bpm:.1f} BPM")
-            
-            # Start blinking only if this is a new alarm (state changed)
             if not prev_state:
-                self.alarm_timer.start(500)  # Blink every 500ms
-                msg = "Pulse High"  # Message for system log
+                self.alarm_timer.start(500)
+                msg = "Pulse High"
                 
-        # BPM is within normal range
         else:
-            # If we were previously in alarm state, clear the alarm
             if prev_state:
                 self.alarm_active = False
-                self.alarm_widget.setVisible(False)  # Hide alarm widget
-                self.alarm_timer.stop()  # Stop blinking
-                msg = "Pulse Normal"  # Message for system log
+                self.alarm_widget.setVisible(False)
+                self.alarm_timer.stop()
+                msg = "Pulse Normal"
                 
         return msg
