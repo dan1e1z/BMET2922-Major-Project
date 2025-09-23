@@ -49,7 +49,7 @@ You can install the necessary Python packages using the `requirements.txt` file.
 1.  **Clone the repository**
    ```sh
    git clone https://github.com/dan1e1z/BMET2922-Major-Project.git
-   cd ppg_health_monitor
+   cd BMET2922-Major-Project/ppg_health_monitor
    ```
 
 2.  **Create and activate a virtual environment**
