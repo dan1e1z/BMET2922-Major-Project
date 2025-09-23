@@ -48,7 +48,7 @@ You can install the necessary Python packages using the `requirements.txt` file.
 
 1.  **Clone the repository**
    ```sh
-   git clone https://github.com/your_username/ppg_health_monitor.git
+   git clone https://github.com/dan1e1z/BMET2922-Major-Project.git
    cd ppg_health_monitor
    ```
 
