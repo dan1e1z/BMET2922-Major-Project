@@ -20,12 +20,20 @@ class SystemLog(QtWidgets.QWidget):
         """
         layout = QtWidgets.QVBoxLayout()
         title = QtWidgets.QLabel("System Log")
+        title.setStyleSheet("font-size: 14px; font-weight: bold; margin-bottom: 5px;")
         layout.addWidget(title)
 
         # Create the log text area
         self.log_text = QtWidgets.QTextEdit()
         self.log_text.setReadOnly(True)
         self.log_text.setMaximumHeight(150)
+        self.log_text.setStyleSheet("""
+            background-color: #2b2b2b; 
+            color: #ffffff; 
+            font-family: 'Consolas', 'Monaco', monospace; 
+            font-size: 11px;
+            border: 1px solid #555;
+        """)
         layout.addWidget(self.log_text)
 
         # Create the clear button
