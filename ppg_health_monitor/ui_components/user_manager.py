@@ -44,22 +44,23 @@ class UserManager:
         with open(self.filename, 'w') as f:
             json.dump(self.users, f, indent=2)
     
-    def signup(self, username, password):
+    def signup(self, username, password, account_type="personal"):
         """
         Create a new user account.
-
         Args:
             username (str): Desired username.
             password (str): Password for the account.
-
+            account_type (str): Type of account - "personal" or "advanced".
         Returns:
-            tuple: (bool, str) where bool indicates success, 
-                   and str provides a status message.
+            tuple: (bool, str) where bool indicates success,
+                and str provides a status message.
         """
         if username in self.users:
             return False, "Username already exists"
+        
         self.users[username] = {
-            "password": password, 
+            "password": password,
+            "account_type": account_type, 
             "history": [],
             "total_sessions": 0,
             "total_duration_minutes": 0,

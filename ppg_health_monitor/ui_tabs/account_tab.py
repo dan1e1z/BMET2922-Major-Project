@@ -6,7 +6,7 @@ class AccountTab(QtWidgets.QWidget):
     Tab widget for user account management.
     Handles login, signup, and logout functionality, and displays user stats.
     """
-    login_successful = QtCore.pyqtSignal(str)
+    login_successful = QtCore.pyqtSignal(str, str)
     logout_requested = QtCore.pyqtSignal()
 
     def __init__(self, user_manager):
@@ -113,30 +113,85 @@ class AccountTab(QtWidgets.QWidget):
     
     def create_signup_form(self):
         """
-        Create and return the signup form widget.
+        Create and return the signup form widget with Personal/Advanced user types.
         """
         w = QtWidgets.QWidget()
         layout = QtWidgets.QFormLayout()
         layout.setSpacing(15)
-
+        
+        # --- Input Fields ---
         self.signup_user = QtWidgets.QLineEdit()
         self.signup_pass = QtWidgets.QLineEdit()
         self.signup_pass.setEchoMode(QtWidgets.QLineEdit.Password)
         self.signup_confirm = QtWidgets.QLineEdit()
         self.signup_confirm.setEchoMode(QtWidgets.QLineEdit.Password)
-
+        
+        # --- User Type Selection ---
+        # --- Create the radio buttons ---
+        self.personal_radio = QtWidgets.QRadioButton("Personal")
+        self.advanced_radio = QtWidgets.QRadioButton("Advanced")
+        self.personal_radio.setChecked(True)  # Set "Personal" as the default
+        
+        # --- Create the helper text labels ---
+        personal_label = QtWidgets.QLabel("Best for tracking daily health and viewing your history.")
+        advanced_label = QtWidgets.QLabel("For researchers and enthusiasts. Includes history viewing and tools for raw signal analysis.")
+        
+        # Style the helper text consistently
+        helper_style = "color: #666; font-size: 11px;"
+        personal_label.setStyleSheet(helper_style)
+        advanced_label.setStyleSheet(helper_style)
+        
+        personal_layout = QtWidgets.QVBoxLayout()
+        personal_layout.setContentsMargins(0, 0, 0, 0)  # Remove extra spacing
+        personal_layout.addWidget(self.personal_radio)
+        personal_layout.addWidget(personal_label)
+        
+        advanced_layout = QtWidgets.QVBoxLayout()
+        advanced_layout.setContentsMargins(0, 0, 0, 0)
+        advanced_layout.addWidget(self.advanced_radio)
+        advanced_layout.addWidget(advanced_label)
+        
+        # --- Add the layouts to the main radio button container ---
+        radio_button_layout = QtWidgets.QHBoxLayout()
+        radio_button_layout.addLayout(personal_layout)
+        radio_button_layout.addLayout(advanced_layout)
+        radio_button_layout.addStretch()
+        
+        radio_container = QtWidgets.QWidget()
+        radio_container.setLayout(radio_button_layout)
+        
+        # --- Consistent Styling ---
+        # Input field styling
+        input_style = "padding: 10px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px;"
         for field in [self.signup_user, self.signup_pass, self.signup_confirm]:
-            field.setStyleSheet("padding: 8px; border: 1px solid #ccc; border-radius: 4px;")
-
+            field.setStyleSheet(input_style)
+        
+        # Button styling
         btn = QtWidgets.QPushButton("Sign Up")
-        btn.setStyleSheet("QPushButton { background-color: #008CBA; color: white; padding: 10px; border: none; border-radius: 4px; font-weight: bold; }")
+        btn_style = """
+            QPushButton { 
+                background-color: #008CBA; 
+                color: white; 
+                padding: 10px 20px; 
+                border: none; 
+                border-radius: 4px; 
+                font-weight: bold;
+                font-size: 14px;
+            }
+            QPushButton:hover { 
+                background-color: #007B9A; 
+            }
+        """
+        btn.setStyleSheet(btn_style)
         btn.clicked.connect(self.handle_signup)
-
+        
+        # --- Add Widgets to Form Layout ---
         layout.addRow("Username:", self.signup_user)
         layout.addRow("Password:", self.signup_pass)
         layout.addRow("Confirm Password:", self.signup_confirm)
+        layout.addRow("Account Type:", radio_container)
         layout.addRow("", btn)
-
+        
         w.setLayout(layout)
         return w
     
@@ -207,7 +262,8 @@ class AccountTab(QtWidgets.QWidget):
             self.stacked.setCurrentWidget(self.logged_in_widget)
             self.tab_buttons_widget.setVisible(False)
             self.status_label.setText("")
-            self.login_successful.emit(username)
+            print("user type:", user_data.get("account_type", "personal"))
+            self.login_successful.emit(username, user_data.get("account_type", "personal"))
 
             # Clear login fields
             self.login_user.clear()
@@ -224,31 +280,40 @@ class AccountTab(QtWidgets.QWidget):
         username = self.signup_user.text().strip()
         password = self.signup_pass.text()
         confirm = self.signup_confirm.text()
+        
+        # Get the selected account type
+        if self.personal_radio.isChecked():
+            account_type = "personal"
+        elif self.advanced_radio.isChecked():
+            account_type = "advanced"
 
+        # Validation
         if not username or not password:
             self.status_label.setText("Please fill in all fields")
             self.status_label.setStyleSheet("color: red; font-weight: bold; margin: 10px;")
             return
-
+            
         if password != confirm:
             self.status_label.setText("Passwords do not match")
             self.status_label.setStyleSheet("color: red; font-weight: bold; margin: 10px;")
             return
-
-        success, msg = self.user_manager.signup(username, password)
+        
+        success, msg = self.user_manager.signup(username, password, account_type)
+        
         if success:
             self.status_label.setText("Account created! Please login.")
             self.status_label.setStyleSheet("color: green; font-weight: bold; margin: 10px;")
-
             # Clear signup fields and switch to login
             self.signup_user.clear()
             self.signup_pass.clear()
             self.signup_confirm.clear()
+            # Reset to default selection
+            self.personal_radio.setChecked(True)
             self.show_login()
         else:
             self.status_label.setText(msg)
             self.status_label.setStyleSheet("color: red; font-weight: bold; margin: 10px;")
-    
+        
     def handle_logout(self):
         """
         Handle logout button click event.

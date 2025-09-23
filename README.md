@@ -30,7 +30,9 @@ This project, developed for the BMET2922 course, is a desktop application for re
 * [PyQt5](https://riverbankcomputing.com/software/pyqt/) for the Graphical User Interface (GUI)
 * [NumPy](https://numpy.org/)
 * [PyQtGraph](http://www.pyqtgraph.org/) for high-performance plotting
+* [SciPy](https://scipy.org/) for signal processing
 * [PySerial](https://pyserial.readthedocs.io/) for Bluetooth communication
+  
 
 ## Getting Started
 
