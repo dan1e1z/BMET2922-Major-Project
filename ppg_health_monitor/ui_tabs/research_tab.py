@@ -2,6 +2,7 @@ from PyQt5 import QtWidgets, QtCore, QtGui
 import pyqtgraph as pg
 import numpy as np
 from scipy.signal import butter, filtfilt
+import os
 
 class ResearchTab(QtWidgets.QWidget):
     """
@@ -12,6 +13,7 @@ class ResearchTab(QtWidgets.QWidget):
         self.user_manager = None
         self.current_user = None
         self.raw_ppg_signal = np.array([])
+        self.filtered_ppg_signal = np.array([])
         self.sampling_rate = 50 # Default, should be updated based on data
         self.setup_ui()
 
@@ -95,6 +97,12 @@ class ResearchTab(QtWidgets.QWidget):
         apply_btn.clicked.connect(self.apply_filter)
         controls_layout.addRow(apply_btn)
 
+        # Save Filtered Data Button
+        self.save_btn = QtWidgets.QPushButton("Save Filtered Data")
+        self.save_btn.clicked.connect(self.save_filtered_data)
+        self.save_btn.setEnabled(False) # Disabled until data is filtered
+        controls_layout.addRow(self.save_btn)
+
         controls_group.setLayout(controls_layout)
         controls_vbox.addWidget(controls_group)
         controls_vbox.addStretch()
@@ -143,6 +151,7 @@ class ResearchTab(QtWidgets.QWidget):
             self.raw_ppg_signal = np.array([])
             self.original_curve.setData([])
             self.filtered_curve.setData([])
+            self.save_btn.setEnabled(False)
             return
 
         session_data = self.session_selector.itemData(index)
@@ -173,6 +182,7 @@ class ResearchTab(QtWidgets.QWidget):
         """Applies the selected filter to the raw signal and plots the result."""
         if self.raw_ppg_signal.size == 0:
             print("No signal loaded to filter.")
+            self.save_btn.setEnabled(False)
             return
 
         filter_type = self.filter_type_combo.currentText()
@@ -187,20 +197,60 @@ class ResearchTab(QtWidgets.QWidget):
 
         try:
             b, a = self.butter_filter(lowcut, highcut, self.sampling_rate, order, btype=filter_type.lower())
-            cleaned_signal = filtfilt(b, a, self.raw_ppg_signal)
+            self.filtered_ppg_signal = filtfilt(b, a, self.raw_ppg_signal)
 
-            time_axis = np.arange(len(cleaned_signal)) / self.sampling_rate
-            self.filtered_curve.setData(time_axis, cleaned_signal)
+            time_axis = np.arange(len(self.filtered_ppg_signal)) / self.sampling_rate
+            self.filtered_curve.setData(time_axis, self.filtered_ppg_signal)
             self.filtered_plot.autoRange()
+            self.save_btn.setEnabled(True)
         except ValueError as e:
             print(f"Error applying filter: {e}")
-            # Optionally show an error message to the user
+            self.save_btn.setEnabled(False)
+            
+            # show error to user
             msg_box = QtWidgets.QMessageBox()
             msg_box.setIcon(QtWidgets.QMessageBox.Warning)
             msg_box.setText("Filter Error")
             msg_box.setInformativeText(f"Could not apply filter. Check parameters.\nError: {e}")
             msg_box.setWindowTitle("Warning")
             msg_box.exec_()
+
+            msg_box.setWindowTitle("Warning")
+            msg_box.exec_()
+
+    def save_filtered_data(self):
+        """Saves the filtered PPG signal to a CSV file."""
+        if self.filtered_ppg_signal.size == 0:
+            QtWidgets.QMessageBox.warning(self, "No Data", "There is no filtered data to save.")
+            return
+
+        # Suggest a filename
+        selected_session_text = self.session_selector.currentText().split("T")[0]
+        filename = f"filtered_ppg_{self.current_user}_{selected_session_text}.csv"
+
+        # Open file dialog
+        options = QtWidgets.QFileDialog.Options()
+        options |= QtWidgets.QFileDialog.DontUseNativeDialog
+        file_path, _ = QtWidgets.QFileDialog.getSaveFileName(
+            self,
+            "Save Filtered Data",
+            filename,
+            "CSV Files (*.csv);;All Files (*)",
+            options=options
+        )
+
+        if file_path:
+            try:
+                time_axis = np.arange(len(self.filtered_ppg_signal)) / self.sampling_rate
+                data_to_save = np.vstack((time_axis, self.filtered_ppg_signal)).T
+                np.savetxt(file_path, data_to_save, delimiter=',', header='Time (s),Filtered PPG', comments='')
+                QtWidgets.QMessageBox.information(self, "Success", f"Data saved successfully to:\n{os.path.basename(file_path)}")
+            except Exception as e:
+                QtWidgets.QMessageBox.critical(self, "Error", f"Failed to save data.\nError: {e}")
+
+
+
+
 
 
     def butter_filter(self, lowcut, highcut, fs, order=5, btype='band'):
