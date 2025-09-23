@@ -45,9 +45,9 @@ class LiveMonitorTab(QtWidgets.QWidget):
         self.system_log = system_log
 
         # Data arrays for visualization
-        self.visual_bpm_data = []
+        self.visual_bpm_data = [0]
         self.visual_raw_pgg_data = []
-        self.time_bpm_data = []
+        self.time_bpm_data = [0]
         self.time_ppg_data = []
         self.last_packet_time = 0
         
@@ -168,16 +168,15 @@ class LiveMonitorTab(QtWidgets.QWidget):
         """
         bpm = packet['bpm']
         self.current_bpm = bpm
-
-        # Assumes packets arrive roughly 1 per second
+        
         current_time = self.last_packet_time
         self.last_packet_time += 1
 
+        # Handle BPM display and alarm logic
+        alarm_msg = None
         if bpm > 0:
             self.bpm_display.setText(f"{bpm:.1f} BPM")
             alarm_msg = self.check_bpm_alarm()
-            if alarm_msg:
-                return alarm_msg
             
             if self.current_user:
                 self.session_bpm.append(bpm)
@@ -185,27 +184,33 @@ class LiveMonitorTab(QtWidgets.QWidget):
         else:
             self.bpm_display.setText("-- BPM")
 
-        # Store data for plotting
+        # Store BPM data point for t=1, t=2, etc.
         self.visual_bpm_data.append(bpm)
-        self.time_bpm_data.append(current_time)
+        self.time_bpm_data.append(self.last_packet_time)
         
+        # Store PPG data for the interval [t, t+1)
         ppg_values = packet["ppg_values"]
-        # Generate timestamps for the 50 PPG samples over the last second
-        ppg_times = np.linspace(current_time - 1, current_time, len(ppg_values), endpoint=False)
-        self.visual_raw_pgg_data.extend(ppg_values)
-        self.time_ppg_data.extend(ppg_times)
+        ppg_times = np.linspace(current_time, self.last_packet_time, len(ppg_values), endpoint=False)
+        # On first run, self.time_ppg_data is empty, so we can just extend
+        if not self.time_ppg_data:
+            self.visual_raw_pgg_data.extend(ppg_values)
+            self.time_ppg_data.extend(ppg_times)
+        else:
+            self.visual_raw_pgg_data.extend(ppg_values)
+            self.time_ppg_data.extend(ppg_times)
 
         self.update_plots()
+        
+        if alarm_msg:
+            return alarm_msg
         return
 
     def update_plots(self):
         """
         Update plot data and view window.
         """
-        if len(self.time_bpm_data) > 1:
-            self.bpm_curve.setData(self.time_bpm_data, self.visual_bpm_data)
-        if len(self.time_ppg_data) > 1:
-            self.raw_ppg_curve.setData(self.time_ppg_data, self.visual_raw_pgg_data)
+        self.bpm_curve.setData(self.time_bpm_data, self.visual_bpm_data)
+        self.raw_ppg_curve.setData(self.time_ppg_data, self.visual_raw_pgg_data)
         
         self.update_plot_view()
         self.update_slider()
