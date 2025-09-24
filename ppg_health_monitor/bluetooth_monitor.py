@@ -3,7 +3,8 @@ import struct
 import serial
 import time
 
-TIMEOUT = 2
+PACKET_RECEIVE_TIMEOUT = 1.1
+FIVE_SEC_TIMEOUT = 5
 
 class BluetoothMonitor(QtCore.QObject):
     """
@@ -17,51 +18,54 @@ class BluetoothMonitor(QtCore.QObject):
         super().__init__()
         self.port = port
         self.baudRate = baudRate
-        self.serialPort = None
+        self.serialPort = serial.Serial()
         self.running = True
         self.STRUCT_FORMAT = "<L50HBB"
         self.STRUCT_SIZE = struct.calcsize(self.STRUCT_FORMAT)
         self.last_packet_time = 0
 
-    def connect(self, retry_interval=1, max_duration=10):
+        self.serialPort.port = port
+        self.serialPort.baudrate = baudRate
+        self.serialPort.bytesize = serial.EIGHTBITS
+        self.serialPort.timeout = 0.1
+
+    def connect(self):
         """
-        Attempt to open the serial port repeatedly for up to max_duration seconds.
+        Attempt to open the serial port repeatedly.
         """
-        start_time = time.time()
-        while time.time() - start_time < max_duration:
-            print(f"** Attempting to connect to {self.port}...")
+        while self.running:
+            if self.serialPort.is_open:
+                return True
             try:
-                self.serialPort = serial.Serial(
-                    port=self.port,
-                    baudrate=self.baudRate,
-                    bytesize=serial.EIGHTBITS,
-                    parity=serial.PARITY_NONE,
-                    stopbits=serial.STOPBITS_ONE,
-                    timeout=1
-                )
-                if self.serialPort.is_open:
-                    print("**************************************")
-                    print(f"** Serial port opened: {self.port}")
-                    print("**************************************")
-                    self.connection_status_changed.emit(True, f"Connected to {self.port}")
-                    self.last_packet_time = time.time()
-                    return True
-            except serial.SerialException as e:
-                print(f"Error opening port {self.port}: {e}. Retrying in {retry_interval} seconds...")
-                self.connection_status_changed.emit(False, f"Failed to connect: {e}")
-                time.sleep(retry_interval)
-        print(f"Failed to connect to {self.port} within {max_duration} seconds.")
-        return False
+                print("before port open")
+                self.serialPort.open()
+                print("**************************************")
+                print(f"** Serial port opened: {self.port}")
+                print("**************************************")
+                self.last_packet_time = time.time()
+                return True
+            except serial.SerialException:
+                pass
+
+    def reconnect(self):
+        print("Reconnecting...")
+        start = time.time()
+        print(f"Closing port {self.port}...")
+        self.serialPort.close()
+        self.connect()
+        print(f"Reconnected in {time.time() - start:.2f} seconds.")
+
+
+        
 
     def monitor(self):
         """
         Main loop: reads packets, handles timeouts, and reconnects if needed.
         """
         while self.running:
+
             if not self.serialPort or not self.serialPort.is_open:
-                if not self.connect():
-                    time.sleep(1)
-                    continue
+                self.connect()
 
             try:
                 if self.serialPort.in_waiting >= self.STRUCT_SIZE:
@@ -83,18 +87,17 @@ class BluetoothMonitor(QtCore.QObject):
                         print("Incomplete packet received. Discarding.")
                         self.serialPort.reset_input_buffer()
 
-                # Timeout check
-                if time.time() - self.last_packet_time > TIMEOUT:
-                    print(f"No data received for {TIMEOUT}s. Reconnecting...")
-                    self.connection_timeout.emit()
-                    if self.serialPort and self.serialPort.is_open:
-                        self.serialPort.close()
-                    self.connection_status_changed.emit(False, "Disconnected: Timeout")
-                    self.connect()
+                elif time.time() - self.last_packet_time > PACKET_RECEIVE_TIMEOUT:
+                    self.reconnect()
+
+
+                # 5 second - packet alert Timeout check
+                # if time.time() - self.last_packet_time > FIVE_SEC_TIMEOUT:
+                #     print(f"No data received for {FIVE_SEC_TIMEOUT}s.")
+                #     self.connection_timeout.emit()
+                #     self.reconnect()
+
 
             except Exception as e:
-                print(f"Unexpected error: {e}")
-                if self.serialPort and self.serialPort.is_open:
-                    self.serialPort.close()
-                self.connection_status_changed.emit(False, f"Error: {e}")
-                time.sleep(1)
+                print("Exception")
+                self.reconnect()
