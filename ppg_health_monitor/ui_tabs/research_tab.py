@@ -14,7 +14,13 @@ class ResearchTab(QtWidgets.QWidget):
         self.current_user = None
         self.raw_ppg_signal = np.array([])
         self.filtered_ppg_signal = np.array([])
-        self.sampling_rate = 50 # Default, should be updated based on data
+        self.sampling_rate = 50  # Default, should be updated based on data
+        self.time_axis = np.array([])
+
+        # Plot window settings
+        self.plot_window_seconds = 10
+        self.is_jump_to_end_enabled = True
+
         self.setup_ui()
 
     def setup_ui(self):
@@ -37,16 +43,34 @@ class ResearchTab(QtWidgets.QWidget):
         self.original_plot = pg.PlotWidget(title="Original Raw PPG Signal")
         self.original_plot.setLabel('left', 'Amplitude')
         self.original_plot.setLabel('bottom', 'Time (s)')
+        self.original_plot.setMouseEnabled(x=False, y=False)
+        self.original_plot.setMenuEnabled(False)
         self.original_curve = self.original_plot.plot(pen='b')
         plots_vbox.addWidget(self.original_plot)
 
         self.filtered_plot = pg.PlotWidget(title="Filtered PPG Signal")
         self.filtered_plot.setLabel('left', 'Amplitude')
         self.filtered_plot.setLabel('bottom', 'Time (s)')
+        self.filtered_plot.setMouseEnabled(x=False, y=False)
+        self.filtered_plot.setMenuEnabled(False)
         self.filtered_curve = self.filtered_plot.plot(pen='g')
         plots_vbox.addWidget(self.filtered_plot)
 
-        main_hbox.addLayout(plots_vbox, 3) # 75% width for plots
+        # Plot controls (slider and checkbox)
+        plot_controls_layout = QtWidgets.QHBoxLayout()
+        self.jump_to_end_checkbox = QtWidgets.QCheckBox("Jump to End")
+        self.jump_to_end_checkbox.setChecked(self.is_jump_to_end_enabled)
+        self.jump_to_end_checkbox.stateChanged.connect(self.toggle_jump_to_end)
+        plot_controls_layout.addWidget(self.jump_to_end_checkbox)
+
+        self.plot_slider = QtWidgets.QSlider(QtCore.Qt.Horizontal)
+        self.plot_slider.setRange(0, 0)
+        self.plot_slider.valueChanged.connect(self.scroll_plots)
+        self.plot_slider.sliderPressed.connect(self.disable_jump_to_end)
+        plot_controls_layout.addWidget(self.plot_slider)
+        plots_vbox.addLayout(plot_controls_layout)
+
+        main_hbox.addLayout(plots_vbox, 3)  # 75% width for plots
 
         # --- Controls ---
         controls_vbox = QtWidgets.QVBoxLayout()
@@ -160,10 +184,67 @@ class ResearchTab(QtWidgets.QWidget):
         if self.raw_ppg_signal.size > 0:
             # Assuming 50Hz sampling rate from ESP32 packet structure (50 samples per packet)
             self.sampling_rate = 50
-            time_axis = np.arange(len(self.raw_ppg_signal)) / self.sampling_rate
-            self.original_curve.setData(time_axis, self.raw_ppg_signal)
-            self.original_plot.autoRange()
-            self.filtered_curve.clear() # Clear filtered plot on new load
+            self.time_axis = np.arange(len(self.raw_ppg_signal)) / self.sampling_rate
+            self.original_curve.setData(self.time_axis, self.raw_ppg_signal)
+            self.filtered_curve.clear()  # Clear filtered plot on new load
+            self.update_slider()
+            self.update_plot_view()
+
+    def update_plot_view(self):
+        """
+        Sets the visible range of the plots based on slider position or auto-scroll.
+        """
+        if not self.time_axis.size > 0:
+            return
+
+        max_time = self.time_axis[-1]
+
+        if self.is_jump_to_end_enabled:
+            start_time = max(0, max_time - self.plot_window_seconds)
+        else:
+            start_time = self.plot_slider.value() / 100.0
+
+        end_time = start_time + self.plot_window_seconds
+        self.original_plot.setXRange(start_time, end_time, padding=0)
+        self.filtered_plot.setXRange(start_time, end_time, padding=0)
+
+    def update_slider(self):
+        """
+        Updates the range and position of the time-scroll slider.
+        """
+        if not self.time_axis.size > 0:
+            return
+
+        max_time = self.time_axis[-1]
+        scrollable_duration = max(0, max_time - self.plot_window_seconds)
+
+        self.plot_slider.setMaximum(int(scrollable_duration * 100))
+        if self.is_jump_to_end_enabled:
+            self.plot_slider.blockSignals(True)
+            self.plot_slider.setValue(self.plot_slider.maximum())
+            self.plot_slider.blockSignals(False)
+
+    def scroll_plots(self, value):
+        """
+        Update the plot view when the slider is moved manually.
+        """
+        if not self.is_jump_to_end_enabled:
+            self.update_plot_view()
+
+    def disable_jump_to_end(self):
+        """
+        Disables auto-scrolling when the user interacts with the slider.
+        """
+        self.jump_to_end_checkbox.setChecked(False)
+
+    def toggle_jump_to_end(self, state):
+        """
+        Enables or disables auto-scrolling based on the checkbox state.
+        """
+        self.is_jump_to_end_enabled = (state == QtCore.Qt.Checked)
+        if self.is_jump_to_end_enabled:
+            self.update_slider()
+        self.update_plot_view()
 
     def update_control_visibility(self):
         """Shows/hides cutoff sliders based on selected filter type."""
@@ -199,9 +280,10 @@ class ResearchTab(QtWidgets.QWidget):
             b, a = self.butter_filter(lowcut, highcut, self.sampling_rate, order, btype=filter_type.lower())
             self.filtered_ppg_signal = filtfilt(b, a, self.raw_ppg_signal)
 
-            time_axis = np.arange(len(self.filtered_ppg_signal)) / self.sampling_rate
-            self.filtered_curve.setData(time_axis, self.filtered_ppg_signal)
-            self.filtered_plot.autoRange()
+            self.time_axis = np.arange(len(self.filtered_ppg_signal)) / self.sampling_rate
+            self.filtered_curve.setData(self.time_axis, self.filtered_ppg_signal)
+            self.update_slider()
+            self.update_plot_view()
             self.save_btn.setEnabled(True)
         except ValueError as e:
             print(f"Error applying filter: {e}")
@@ -247,7 +329,6 @@ class ResearchTab(QtWidgets.QWidget):
                 QtWidgets.QMessageBox.information(self, "Success", f"Data saved successfully to:\n{os.path.basename(file_path)}")
             except Exception as e:
                 QtWidgets.QMessageBox.critical(self, "Error", f"Failed to save data.\nError: {e}")
-
 
 
 
