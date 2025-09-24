@@ -64,8 +64,8 @@ You can install the necessary Python packages using the `requirements.txt` file.
 
     *   On **Windows**:
         ```sh
-        python -m venv venv
-        .\venv\Scripts\activate
+        py -m venv .venv
+         ./.venv/Scripts/activate.ps1
         ```
 
 3.  **Install the required packages**
