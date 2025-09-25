@@ -39,6 +39,7 @@ class BluetoothMonitor(QtCore.QObject):
             try:
                 print("before port open")
                 self.serialPort.open()
+                self.connection_status_changed.emit(True, f"Connected to {self.port}")
                 print("**************************************")
                 print(f"** Serial port opened: {self.port}")
                 print("**************************************")
@@ -68,7 +69,7 @@ class BluetoothMonitor(QtCore.QObject):
                 self.connect()
 
             try:
-                if self.serialPort.in_waiting >= self.STRUCT_SIZE:
+                if self.serialPort.in_waiting == self.STRUCT_SIZE:
                     packet = self.serialPort.read(self.STRUCT_SIZE)
                     if len(packet) == self.STRUCT_SIZE:
                         data = struct.unpack(self.STRUCT_FORMAT, packet)
@@ -86,10 +87,10 @@ class BluetoothMonitor(QtCore.QObject):
                     else:
                         print("Incomplete packet received. Discarding.")
                         self.serialPort.reset_input_buffer()
-
+                
                 elif time.time() - self.last_packet_time > PACKET_RECEIVE_TIMEOUT:
+                    self.connection_status_changed.emit(False, "Disconnected: Timeout")
                     self.reconnect()
-
 
                 # 5 second - packet alert Timeout check
                 # if time.time() - self.last_packet_time > FIVE_SEC_TIMEOUT:
