@@ -1,4 +1,4 @@
-from PyQt5 import QtWidgets, QtCore
+from PyQt5 import QtWidgets, QtCore, QtGui
 import pyqtgraph as pg
 import numpy as np 
 from datetime import datetime
@@ -54,6 +54,7 @@ class LiveMonitorTab(QtWidgets.QWidget):
         # Plot window settings
         self.plot_window_seconds = 5
         self.is_auto_scrolling = True
+        self.show_hrv_plots = False
 
         # BPM and alarm variables
         self.current_bpm = 0
@@ -69,6 +70,8 @@ class LiveMonitorTab(QtWidgets.QWidget):
         Set up the UI for the live monitor tab, including plots, controls, and the new plot slider.
         """
         main_layout = QtWidgets.QVBoxLayout()
+
+        # --------- PLOTS ----------
         plots_layout = QtWidgets.QVBoxLayout()
 
         # BPM Plot
@@ -78,7 +81,16 @@ class LiveMonitorTab(QtWidgets.QWidget):
         self.bpm_plot.showGrid(True, True)
         self.bpm_plot.setMouseEnabled(x=False, y=False)
         self.bpm_plot.setMenuEnabled(False)
-        self.bpm_curve = self.bpm_plot.plot(pen=pg.mkPen('r', width=2))
+        self.bpm_curve = self.bpm_plot.plot(pen=pg.mkPen('r', width=2), name='Heart Rate')
+
+        # Average BPM line
+        self.avg_bpm_line = pg.InfiniteLine(
+            angle=0, 
+            pen=pg.mkPen(QtGui.QColor("#FFA726"), width=2, style=QtCore.Qt.DashLine)
+        )
+        self.avg_bpm_line.setVisible(False)
+        self.bpm_plot.addItem(self.avg_bpm_line)
+
         plots_layout.addWidget(self.bpm_plot)
 
         # Raw PPG Plot
@@ -223,6 +235,9 @@ class LiveMonitorTab(QtWidgets.QWidget):
         """
         self.bpm_curve.setData(self.time_bpm_data, self.visual_bpm_data)
         self.raw_ppg_curve.setData(self.time_ppg_data, self.visual_raw_pgg_data)
+
+        # Update average BPM line and display
+        self.update_average_bpm_line()
         
         self.update_plot_view()
         self.update_slider()
@@ -343,3 +358,13 @@ class LiveMonitorTab(QtWidgets.QWidget):
         window_map = {"5s": 5, "10s": 10, "30s": 30, "60s": 60}
         self.plot_window_seconds = window_map.get(window_text, 10)
         self.update_plot_view()
+
+    def update_average_bpm_line(self):
+        """Update the average BPM reference line."""
+        if len(self.visual_bpm_data) > 1:
+            # Calculate average excluding zero values
+            valid_bpm = [bpm for bpm in self.visual_bpm_data if bpm > 0]
+            if valid_bpm:
+                avg_bpm = np.mean(valid_bpm)
+                self.avg_bpm_line.setValue(avg_bpm)
+                self.avg_bpm_line.setVisible(True)
