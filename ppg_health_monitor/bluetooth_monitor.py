@@ -69,7 +69,7 @@ class BluetoothMonitor(QtCore.QObject):
                 self.connect()
 
             try:
-                if self.serialPort.in_waiting == self.STRUCT_SIZE:
+                if self.serialPort.in_waiting >= self.STRUCT_SIZE:
                     packet = self.serialPort.read(self.STRUCT_SIZE)
                     if len(packet) == self.STRUCT_SIZE:
                         data = struct.unpack(self.STRUCT_FORMAT, packet)
