@@ -93,6 +93,8 @@ class LiveMonitorTab(QtWidgets.QWidget):
 
         # Plot controls (slider and checkbox)
         plot_controls_layout = QtWidgets.QHBoxLayout()
+
+        # Auto-scroll control
         self.auto_scroll_checkbox = QtWidgets.QCheckBox("Auto-Scroll")
         self.auto_scroll_checkbox.setChecked(self.is_auto_scrolling)
         self.auto_scroll_checkbox.stateChanged.connect(self.toggle_auto_scroll)
@@ -104,6 +106,16 @@ class LiveMonitorTab(QtWidgets.QWidget):
         self.plot_slider.sliderPressed.connect(self.disable_auto_scroll)
         plot_controls_layout.addWidget(self.plot_slider)
         plots_layout.addLayout(plot_controls_layout)
+
+        # Time window selector
+        window_label = QtWidgets.QLabel("Time Window:")
+        window_label.setStyleSheet("QLabel { font-weight: bold; }")
+        self.window_selector = QtWidgets.QComboBox()
+        self.window_selector.addItems(["5s", "10s", "30s", "60s"])
+        self.window_selector.setCurrentText("10s")
+        self.window_selector.currentTextChanged.connect(self.update_time_window)
+        plot_controls_layout.addWidget(window_label)
+        plot_controls_layout.addWidget(self.window_selector)
 
         # Session info
         self.session_info = QtWidgets.QLabel("Not logged in")
@@ -325,3 +337,9 @@ class LiveMonitorTab(QtWidgets.QWidget):
                 msg = "Pulse Normal"
                 
         return msg
+    
+    def update_time_window(self, window_text):
+        """Update the time window for plot display."""
+        window_map = {"5s": 5, "10s": 10, "30s": 30, "60s": 60}
+        self.plot_window_seconds = window_map.get(window_text, 10)
+        self.update_plot_view()
