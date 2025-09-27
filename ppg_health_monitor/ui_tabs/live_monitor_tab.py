@@ -1,81 +1,109 @@
 from PyQt5 import QtWidgets, QtCore, QtGui
 import pyqtgraph as pg
-import numpy as np 
+import numpy as np
 from datetime import datetime
-
-
+import neurokit2 as nk
+from scipy import signal
 class LiveMonitorTab(QtWidgets.QWidget):
 
     """
-    A PyQt5 widget for real-time heart rate monitoring with visual plots and alarm system.
-    
-    This class provides:
-    - Real-time BPM and raw PPG signal visualization with a sliding window
-    - User session management and data logging
-    - Configurable BPM alarm thresholds with visual/audio alerts
-    - Live statistics display
-    
+    A PyQt5 widget for real-time physiological monitoring.
+
+    This tab provides a user interface for visualizing live photoplethysmography (PPG)
+    data, from which it calculates and displays heart rate (BPM), heart rate
+    variability (HRV) metrics, and respiratory rate (RR). It includes features
+    for session management, data logging, and configurable BPM alarm thresholds.
+
     Attributes:
-        current_user (str): Currently logged in user
-        session_raw_ppg (list): Raw PPG data for current session
-        session_start_time (datetime): When current session started
-        session_bpm (list): BPM readings for current session
-        visual_bpm_data (list): BPM data used for plotting
-        visual_raw_pgg_data (list): Raw PPG data used for plotting
-        time_bpm_data (list): Timestamps for BPM data points
-        time_ppg_data (list): Timestamps for raw PPG data points
-        last_packet_time (float): Time of the last received data packet
-        plot_window_seconds (int): Duration of the visible plot window in seconds
-        is_auto_scrolling (bool): Flag to control if plots auto-scroll to the latest data
-        current_bpm (float): Most recent BPM reading
-        bpm_low (int): Lower threshold for BPM alarm
-        bpm_high (int): Upper threshold for BPM alarm
-        alarm_active (bool): Whether alarm is currently triggered
+        current_user (str): The identifier for the currently active user session.
+        session_raw_ppg (list): Stores all raw PPG data points for the current session.
+        session_start_time (datetime): Timestamp marking the beginning of the session.
+        session_bpm (list): Stores all calculated BPM values for the session.
+        visual_bpm_data (list): A rolling list of BPM data for plotting.
+        visual_raw_pgg_data (list): A rolling list of raw PPG data for plotting.
+        time_bpm_data (list): Timestamps corresponding to the `visual_bpm_data` points.
+        time_ppg_data (list): Timestamps corresponding to the `visual_raw_pgg_data` points.
+        ibi_data (list): Stores Inter-Beat Interval values in milliseconds for plotting.
+        rr_data (list): Stores Respiratory Rate values for plotting.
+        hrv_metrics (dict): A dictionary of the latest calculated HRV metrics.
+        plot_window_seconds (int): The duration of the time window visible on the plots.
+        is_auto_scrolling (bool): Controls whether the plots automatically scroll to new data.
+        current_bpm (float): The most recently calculated BPM value.
+        bpm_low (int): The lower BPM threshold for triggering an alarm.
+        bpm_high (int): The upper BPM threshold for triggering an alarm.
+        alarm_active (bool): True if the BPM is outside the set thresholds.
+        sampling_rate (int): The sampling frequency of the incoming PPG signal in Hz.
     """
     def __init__(self, system_log):
+        """
+        Initializes the LiveMonitorTab widget.
+
+        Args:
+            sytem_log: A logging object for displaying system messages.
+        """
         super().__init__()
 
-        # User/session management variables
+        # --- Session Management ---
         self.current_user = None
-        self.session_raw_ppg = []
         self.session_start_time = None
+        self.session_raw_ppg = []
         self.session_bpm = []
-
-        # System log widget
         self.system_log = system_log
 
-        # Data arrays for visualization
+        # --- Data Storage for Visualization ---
+        # These lists hold the data currently visible in the plot window.
         self.visual_bpm_data = [0]
         self.visual_raw_pgg_data = []
         self.time_bpm_data = [0]
         self.time_ppg_data = []
         self.last_packet_time = 0
-        
-        # Plot window settings
-        self.plot_window_seconds = 5
+
+        # --- HRV and Respiratory Rate Data ---
+        self.ibi_data = []          # Inter-beat intervals in milliseconds.
+        self.ibi_times = []         # Timestamps for IBI data points.
+        self.rr_data = []           # Respiratory rate data points.
+        self.rr_times = []          # Timestamps for RR data points.
+        self.hrv_metrics = {}       # Stores the most recent HRV metrics.
+
+        # --- Plotting Configuration Defaults ---
+        self.plot_window_seconds = 10
         self.is_auto_scrolling = True
         self.show_hrv_plots = False
+        
+        # --- PPG Signal Processing ---
+        self.sampling_rate = 50     # Default PPG sampling rate (Hz).
+        self.ppg_buffer = []        # A buffer to hold incoming PPG data for processing.
 
-        # BPM and alarm variables
+        # Buffer size based on plot window to ensure enough data for analysis.
+        self.ppg_buffer_size = self.sampling_rate * self.plot_window_seconds
+        self.all_peak_times = []    # Stores timestamps of all detected R-peaks.
+        self.all_peak_amplitudes = [] # Stores amplitudes of all detected R-peaks.
+        self.last_hrv_update = 0    # Timestamp of the last HRV calculation.
+
+        # --- BPM and Alarm State Defaults ---
         self.current_bpm = 0
         self.bpm_low = 40
         self.bpm_high = 200
         self.alarm_active = False
 
-        # Initialize the user interface
+        # Initialize the user interface.
         self.setup_ui()
 
     def setup_ui(self):
         """
-        Set up the UI for the live monitor tab, including plots, controls, and the new plot slider.
+        Configures and arranges all UI elements for the monitoring tab.
+        
+        This method initializes the plot widgets, control panels, sliders,
+        and labels that make up the tab's interface.
         """
         main_layout = QtWidgets.QVBoxLayout()
 
-        # --------- PLOTS ----------
+        # === PLOTS PANEL ===
         plots_layout = QtWidgets.QVBoxLayout()
 
-        # BPM Plot
+        # --- BPM Plot ---
         self.bpm_plot = pg.PlotWidget()
+        self.bpm_plot.setTitle("Heart Rate (BPM)")
         self.bpm_plot.setLabel('left', 'BPM')
         self.bpm_plot.setLabel('bottom', 'Time', units='s')
         self.bpm_plot.showGrid(True, True)
@@ -83,43 +111,85 @@ class LiveMonitorTab(QtWidgets.QWidget):
         self.bpm_plot.setMenuEnabled(False)
         self.bpm_curve = self.bpm_plot.plot(pen=pg.mkPen('r', width=2), name='Heart Rate')
 
-        # Average BPM line
+        # Add a line to indicate the average BPM for the session.
         self.avg_bpm_line = pg.InfiniteLine(
             angle=0, 
             pen=pg.mkPen(QtGui.QColor("#FFA726"), width=2, style=QtCore.Qt.DashLine)
         )
         self.avg_bpm_line.setVisible(False)
         self.bpm_plot.addItem(self.avg_bpm_line)
+        plots_layout.addWidget(self.bpm_plot, stretch=2)
 
-        plots_layout.addWidget(self.bpm_plot)
-
-        # Raw PPG Plot
+        # --- Raw PPG Plot ---
         self.raw_ppg_plot = pg.PlotWidget()
-        self.raw_ppg_plot.setLabel('left', 'PPG Raw')
+        self.raw_ppg_plot.setTitle("Raw PPG Signal")
+        self.raw_ppg_plot.setLabel('left', 'PPG Amplitude')
         self.raw_ppg_plot.setLabel('bottom', 'Time', units='s')
         self.raw_ppg_plot.showGrid(True, True)
         self.raw_ppg_plot.setMouseEnabled(x=False, y=False)
         self.raw_ppg_plot.setMenuEnabled(False)
         self.raw_ppg_curve = self.raw_ppg_plot.plot(pen=pg.mkPen('b', width=2))
-        plots_layout.addWidget(self.raw_ppg_plot)
+        
+        # Add scatter plot item to mark detected R-peaks on the PPG signal.
+        self.peak_scatter = pg.ScatterPlotItem(
+            pen=pg.mkPen(color='red'), 
+            brush=pg.mkBrush(color='red'), 
+            size=8, 
+            symbol='o'
+        )
+        self.raw_ppg_plot.addItem(self.peak_scatter)
+        plots_layout.addWidget(self.raw_ppg_plot, stretch=2)
 
-        # Plot controls (slider and checkbox)
+        # --- IBI Tachogram Plot (Initially Hidden) ---
+        self.ibi_plot = pg.PlotWidget()
+        self.ibi_plot.setTitle("Inter-Beat Intervals (IBI)")
+        self.ibi_plot.setLabel('left', 'IBI', units='ms') 
+        self.ibi_plot.setLabel('bottom', 'Time', units='s')
+        self.ibi_plot.showGrid(True, True)
+        self.ibi_plot.setMouseEnabled(x=False, y=False)
+        self.ibi_plot.setMenuEnabled(False)
+        self.ibi_curve = self.ibi_plot.plot(
+            pen=pg.mkPen(QtGui.QColor("#6A1B9A"), width=2), 
+            symbol='o', 
+            symbolSize=6,
+            symbolBrush=pg.mkBrush(QtGui.QColor("#6A1B9A")),
+            name='IBI'
+        )
+        self.ibi_plot.setVisible(False)
+        plots_layout.addWidget(self.ibi_plot, stretch=2)
+
+        # --- Respiratory Rate Plot (Initially Hidden) ---
+        self.rr_plot = pg.PlotWidget()
+        self.rr_plot.setTitle("Respiratory Rate")
+        self.rr_plot.setLabel('left', 'Breaths/min')
+        self.rr_plot.setLabel('bottom', 'Time', units='s')
+        self.rr_plot.showGrid(True, True)
+        self.rr_plot.setMouseEnabled(x=False, y=False)
+        self.rr_plot.setMenuEnabled(False)
+        self.rr_curve = self.rr_plot.plot(
+            pen=pg.mkPen(QtGui.QColor("#00695C"), width=2), 
+            name='Respiratory Rate'
+        )
+        self.rr_plot.setVisible(False)
+        plots_layout.addWidget(self.rr_plot, stretch=2)
+
+        # --- Plot Controls (Slider, Checkbox, and Time Window Selector) ---
         plot_controls_layout = QtWidgets.QHBoxLayout()
 
-        # Auto-scroll control
+        # Checkbox to enable or disable auto-scrolling.
         self.auto_scroll_checkbox = QtWidgets.QCheckBox("Auto-Scroll")
         self.auto_scroll_checkbox.setChecked(self.is_auto_scrolling)
         self.auto_scroll_checkbox.stateChanged.connect(self.toggle_auto_scroll)
         plot_controls_layout.addWidget(self.auto_scroll_checkbox)
 
+        # Slider for manually scrolling through the plot history.
         self.plot_slider = QtWidgets.QSlider(QtCore.Qt.Horizontal)
         self.plot_slider.setRange(0, 0)
         self.plot_slider.valueChanged.connect(self.scroll_plots)
         self.plot_slider.sliderPressed.connect(self.disable_auto_scroll)
         plot_controls_layout.addWidget(self.plot_slider)
-        plots_layout.addLayout(plot_controls_layout)
 
-        # Time window selector
+        # Dropdown to select the visible time window duration.
         window_label = QtWidgets.QLabel("Time Window:")
         window_label.setStyleSheet("QLabel { font-weight: bold; }")
         self.window_selector = QtWidgets.QComboBox()
@@ -128,63 +198,115 @@ class LiveMonitorTab(QtWidgets.QWidget):
         self.window_selector.currentTextChanged.connect(self.update_time_window)
         plot_controls_layout.addWidget(window_label)
         plot_controls_layout.addWidget(self.window_selector)
+        plots_layout.addLayout(plot_controls_layout)
 
-        # Session info
+        # Label to display current session information.
         self.session_info = QtWidgets.QLabel("Not logged in")
         self.session_info.setAlignment(QtCore.Qt.AlignRight)
+        plots_layout.addWidget(self.session_info)
 
-        # Right side controls
-        controls_layout = QtWidgets.QVBoxLayout()
+
+        # === CONTROLS & INFO PANEL ===
         controls_widget = QtWidgets.QWidget()
-        controls_widget.setStyleSheet("background-color: #f0f0f0; border-radius: 10px; padding: 10px; border: 1px solid #ccc;")
+        controls_layout = QtWidgets.QVBoxLayout()
+        controls_layout.setSpacing(15)
 
+        # --- Heart Rate Panel ---
+        bpm_group = QtWidgets.QGroupBox("Heart Rate")
+        bpm_layout = QtWidgets.QVBoxLayout(bpm_group)
         self.bpm_display = QtWidgets.QLabel("-- BPM")
         self.bpm_display.setAlignment(QtCore.Qt.AlignCenter)
-        self.bpm_display.setStyleSheet("font-size: 48px; font-weight: bold; color: #2E7D32;")
+        self.bpm_display.setStyleSheet("font-size: 28px; font-weight: bold; color: #2E7D32;")
+        self.bpm_status = QtWidgets.QLabel("Monitoring...")
+        self.bpm_status.setAlignment(QtCore.Qt.AlignCenter)
+        bpm_layout.addWidget(self.bpm_display)
+        bpm_layout.addWidget(self.bpm_status)
+        controls_layout.addWidget(bpm_group)
 
-        self.alarm_widget = QtWidgets.QLabel("")
-        self.alarm_widget.setAlignment(QtCore.Qt.AlignCenter)
-        self.alarm_widget.setVisible(False)
-        self.alarm_widget.setStyleSheet("font-size: 16px; font-weight: bold; color: white; background-color: #f44336; border: 3px solid #d32f2f; border-radius: 10px; padding: 10px;")
+        # --- HRV Metrics Panel ---
+        hrv_group = QtWidgets.QGroupBox("HRV Metrics")
+        hrv_layout = QtWidgets.QVBoxLayout(hrv_group)
+        self.hrv_display = QtWidgets.QLabel("Calculating...")
+        self.hrv_display.setAlignment(QtCore.Qt.AlignLeft)
+        self.hrv_display.setStyleSheet("font-family: monospace; font-size: 10px;")
+        self.hrv_display.setWordWrap(True)
+        hrv_layout.addWidget(self.hrv_display)
+        controls_layout.addWidget(hrv_group)
 
-        self.current_stats = QtWidgets.QLabel("")
-        self.current_stats.setAlignment(QtCore.Qt.AlignCenter)
-        self.current_stats.setStyleSheet("background-color: #e0e0e0; padding: 10px; border-radius: 5px; margin: 5px;")
-        self.current_stats.setWordWrap(True)
+        # --- Respiratory Rate Panel ---
+        rr_group = QtWidgets.QGroupBox("Respiratory Rate")
+        rr_layout = QtWidgets.QVBoxLayout(rr_group)
+        self.rr_display = QtWidgets.QLabel("-- breaths/min")
+        self.rr_display.setAlignment(QtCore.Qt.AlignCenter)
+        self.rr_display.setStyleSheet("font-size: 18px; font-weight: bold; color: #00695C;")
+        rr_layout.addWidget(self.rr_display)
+        controls_layout.addWidget(rr_group)
 
+        # --- Display Options Panel ---
+        display_group = QtWidgets.QGroupBox("Display Options")
+        display_layout = QtWidgets.QVBoxLayout(display_group)
+        self.ibi_toggle = QtWidgets.QCheckBox("Show IBI Plot") # Toggle for IBI plot visibility.
+        self.ibi_toggle.stateChanged.connect(self.toggle_ibi_plot)
+        display_layout.addWidget(self.ibi_toggle)
+        self.rr_toggle = QtWidgets.QCheckBox("Show RR Plot") # Toggle for RR plot visibility.
+        self.rr_toggle.stateChanged.connect(self.toggle_rr_plot)
+        display_layout.addWidget(self.rr_toggle)
+        controls_layout.addWidget(display_group)
+
+        # --- Alarm Thresholds Panel ---
+        thresholds_group = QtWidgets.QGroupBox("BPM Thresholds")
+        thresholds_layout = QtWidgets.QVBoxLayout(thresholds_group)
         self.low_slider = QtWidgets.QSlider(QtCore.Qt.Horizontal)
         self.low_slider.setRange(20, 100)
         self.low_slider.setValue(self.bpm_low)
         self.low_slider.valueChanged.connect(self.update_thresholds)
-
         self.high_slider = QtWidgets.QSlider(QtCore.Qt.Horizontal)
         self.high_slider.setRange(120, 250)
         self.high_slider.setValue(self.bpm_high)
         self.high_slider.valueChanged.connect(self.update_thresholds)
-
         self.low_label = QtWidgets.QLabel(f"Low BPM Warning: {self.bpm_low}")
         self.high_label = QtWidgets.QLabel(f"High BPM Warning: {self.bpm_high}")
-
-        controls_layout.addWidget(self.bpm_display)
+        thresholds_layout.addWidget(self.low_label)
+        thresholds_layout.addWidget(self.low_slider)
+        thresholds_layout.addWidget(self.high_label)
+        thresholds_layout.addWidget(self.high_slider)
+        controls_layout.addWidget(thresholds_group)
+        
+        # --- Alarm Display Widget ---
+        self.alarm_widget = QtWidgets.QLabel("")
+        self.alarm_widget.setAlignment(QtCore.Qt.AlignCenter)
+        self.alarm_widget.setStyleSheet("QLabel { background-color: #ff0000; color: white; font-weight: bold; padding: 10px; }")
+        self.alarm_widget.setVisible(False)
         controls_layout.addWidget(self.alarm_widget)
+
+        # --- Current Statistics Display ---
+        self.current_stats = QtWidgets.QLabel("")
+        self.current_stats.setAlignment(QtCore.Qt.AlignCenter)
+        self.current_stats.setWordWrap(True)
         controls_layout.addWidget(self.current_stats)
-        controls_layout.addWidget(self.low_label)
-        controls_layout.addWidget(self.low_slider)
-        controls_layout.addWidget(self.high_label)
-        controls_layout.addWidget(self.high_slider)
+        
         controls_layout.addStretch()
         controls_widget.setLayout(controls_layout)
 
+        # --- Main Layout Assembly ---
         content_layout = QtWidgets.QHBoxLayout()
-        content_layout.addLayout(plots_layout, 3)
-        content_layout.addWidget(controls_widget, 1)
+        content_layout.addLayout(plots_layout, 3) # Plots take 3/4 of the space.
+        content_layout.addWidget(controls_widget, 1) # Controls take 1/4 of the space.
+        
         main_layout.addLayout(content_layout)
         main_layout.addWidget(self.system_log)
         self.setLayout(main_layout)
 
+        # --- Timers ---
+        # Timer to create a blinking effect for the alarm widget.
         self.alarm_timer = QtCore.QTimer()
         self.alarm_timer.timeout.connect(self.blink_alarm)
         self.alarm_visible = True
+
+        # Timer to periodically update session duration info.
+        self.update_timer = QtCore.QTimer()
+        self.update_timer.timeout.connect(self.update_session_info)
+        self.update_timer.start(1000)  
 
     def new_data_received(self, packet):
         """
@@ -368,3 +490,13 @@ class LiveMonitorTab(QtWidgets.QWidget):
                 avg_bpm = np.mean(valid_bpm)
                 self.avg_bpm_line.setValue(avg_bpm)
                 self.avg_bpm_line.setVisible(True)
+    
+    def toggle_ibi_plot(self, state):
+        """Toggle visibility of IBI plot."""
+        show_ibi_plot = (state == QtCore.Qt.Checked)
+        self.ibi_plot.setVisible(show_ibi_plot)
+
+    def toggle_rr_plot(self, state):
+        """Toggle visibility of Respiratory Rate plot."""
+        show_rr_plot = (state == QtCore.Qt.Checked)
+        self.rr_plot.setVisible(show_rr_plot)
