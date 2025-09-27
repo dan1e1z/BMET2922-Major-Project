@@ -368,14 +368,27 @@ class LiveMonitorTab(QtWidgets.QWidget):
         """
         Update plot data and view window.
         """
-        self.bpm_curve.setData(self.time_bpm_data, self.visual_bpm_data)
-        self.raw_ppg_curve.setData(self.time_ppg_data, self.visual_raw_pgg_data)
+        # Only update if we have data
+        if self.time_bpm_data and self.visual_bpm_data:
+            self.bpm_curve.setData(self.time_bpm_data, self.visual_bpm_data)
+        
+        if self.time_ppg_data and self.visual_raw_pgg_data:
+            self.raw_ppg_curve.setData(self.time_ppg_data, self.visual_raw_pgg_data)
+        
+        # Update IBI plot if visible
+        if self.ibi_plot.isVisible() and self.ibi_data and self.ibi_times:
+            self.ibi_curve.setData(self.ibi_times, self.ibi_data)
+        
+        # Update RR plot if visible
+        if self.rr_plot.isVisible() and self.rr_data and self.rr_times:
+            self.rr_curve.setData(self.rr_times, self.rr_data)
 
         # Update average BPM line and display
         self.update_average_bpm_line()
         
         self.update_plot_view()
         self.update_slider()
+
 
     def update_plot_view(self):
         """
@@ -391,6 +404,12 @@ class LiveMonitorTab(QtWidgets.QWidget):
         end_time = start_time + self.plot_window_seconds
         self.bpm_plot.setXRange(start_time, end_time, padding=0)
         self.raw_ppg_plot.setXRange(start_time, end_time, padding=0)
+        
+        if self.ibi_plot.isVisible():
+            self.ibi_plot.setXRange(start_time, end_time, padding=0)
+            
+        if self.rr_plot.isVisible():
+            self.rr_plot.setXRange(start_time, end_time, padding=0)
 
     def update_slider(self):
         """
@@ -589,7 +608,7 @@ class LiveMonitorTab(QtWidgets.QWidget):
         else:
             pnn50 = 0
         
-        # Poincaré plot parameters
+        # Poincare plot parameters
         sd1 = np.sqrt(0.5 * rmssd**2)
         sd2 = max(np.sqrt(2 * sdnn**2 - 0.5 * rmssd**2), 0)
         
