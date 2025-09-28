@@ -648,14 +648,14 @@ class LiveMonitorTab(QtWidgets.QWidget):
             self.alarm_active = True
             self.alarm_widget.setText(f"WARNING: PULSE LOW: {self.current_bpm:.1f} BPM")
             if not prev_state:
-                self.alarm_timer.start(500)
+                self.alarm_timer.start(1000)
                 msg = "Pulse Low"
                 
         elif self.current_bpm > self.bpm_high:
             self.alarm_active = True
             self.alarm_widget.setText(f"WARNING: PULSE HIGH: {self.current_bpm:.1f} BPM")
             if not prev_state:
-                self.alarm_timer.start(500)
+                self.alarm_timer.start(1000)
                 msg = "Pulse High"
                 
         else:
