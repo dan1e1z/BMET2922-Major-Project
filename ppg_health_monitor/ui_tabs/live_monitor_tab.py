@@ -503,9 +503,6 @@ class LiveMonitorTab(QtWidgets.QWidget):
 
         self.hrv_display.setText(hrv_text)
 
-
-
-
     def _update_peaks(self, peak_times, peak_amplitudes):
         """Update peak data with new peaks and visualize them."""
         for time, amp in zip(peak_times, peak_amplitudes):

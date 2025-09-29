@@ -1,163 +1,451 @@
 from PyQt5 import QtWidgets, QtCore, QtGui
 import pyqtgraph as pg
 import numpy as np
-from scipy.signal import butter, filtfilt
+import neurokit2 as nk
+from scipy.signal import butter, filtfilt, welch, savgol_filter, freqz
+import pandas as pd
 import os
+from datetime import datetime
 
 class ResearchTab(QtWidgets.QWidget):
-    """
-    Tab for advanced users to load, filter, and analyze raw PPG signals from past sessions.
-    """
+    """Advanced research tab for PPG signal analysis with comprehensive filtering and HRV analysis."""
+    
     def __init__(self):
         super().__init__()
+        
+        # Core data
         self.user_manager = None
         self.current_user = None
         self.raw_ppg_signal = np.array([])
         self.filtered_ppg_signal = np.array([])
-        self.sampling_rate = 50  # Default, should be updated based on data
+        self.peaks = np.array([])
         self.time_axis = np.array([])
-
-        # Plot window settings
+        self.session_metadata = {}
+        
+        # Analysis parameters
+        self.sampling_rate = 50
+        self.filter_applied = False
+        
+        # Results storage
+        self.hrv_metrics = {}
+        self.signal_quality_metrics = {}
+        
+        # Display settings
         self.plot_window_seconds = 10
         self.is_jump_to_end_enabled = True
-
+        
         self.setup_ui()
 
     def setup_ui(self):
-        """
-        Set up the UI for the research tab, including plots and controls.
-        """
+        """Create and configure the user interface layout."""
         layout = QtWidgets.QVBoxLayout()
 
-        # Title
-        title = QtWidgets.QLabel("Raw Signal Analysis")
+        # Title and metadata
+        title_layout = QtWidgets.QHBoxLayout()
+        title = QtWidgets.QLabel("Advanced PPG Signal Analysis")
         title.setAlignment(QtCore.Qt.AlignCenter)
         title.setStyleSheet("font-size: 18px; font-weight: bold; margin: 10px;")
-        layout.addWidget(title)
+        
+        self.metadata_label = QtWidgets.QLabel("")
+        self.metadata_label.setStyleSheet("font-size: 10px; color: gray; margin: 5px;")
+        self.metadata_label.setAlignment(QtCore.Qt.AlignRight)
+        
+        title_layout.addWidget(title)
+        title_layout.addWidget(self.metadata_label)
+        layout.addLayout(title_layout)
 
-        # Main horizontal layout for plots and controls
-        main_hbox = QtWidgets.QHBoxLayout()
+        # Main splitter
+        main_splitter = QtWidgets.QSplitter(QtCore.Qt.Horizontal)
+        plots_widget = self.create_plots_widget()
+        controls_widget = self.create_controls_widget()
+        
+        main_splitter.addWidget(plots_widget)
+        main_splitter.addWidget(controls_widget)
+        main_splitter.setStretchFactor(0, 7)
+        main_splitter.setStretchFactor(1, 3)
+        
+        layout.addWidget(main_splitter)
+        self.setLayout(layout)
+        self.update_control_visibility()
 
-        # --- Plots ---
-        plots_vbox = QtWidgets.QVBoxLayout()
+    def create_plots_widget(self):
+        """Create the plotting area with tabbed views."""
+        widget = QtWidgets.QWidget()
+        layout = QtWidgets.QVBoxLayout(widget)
+
+        self.plot_tabs = QtWidgets.QTabWidget()
+        
+        # Time domain tab
+        time_tab = self.create_time_domain_tab()
+        self.plot_tabs.addTab(time_tab, "Time Domain")
+        
+        # HRV analysis tab
+        hrv_tab = self.create_hrv_tab()
+        self.plot_tabs.addTab(hrv_tab, "HRV Analysis")
+        
+        layout.addWidget(self.plot_tabs)
+        
+        # Plot controls
+        controls_layout = self.create_plot_controls()
+        layout.addLayout(controls_layout)
+        
+        return widget
+
+    def create_time_domain_tab(self):
+        """Create time domain plotting tab."""
+        time_tab = QtWidgets.QWidget()
+        time_layout = QtWidgets.QVBoxLayout(time_tab)
+        
+        # Original signal plot
         self.original_plot = pg.PlotWidget(title="Original Raw PPG Signal")
-        self.original_plot.setLabel('left', 'Amplitude')
+        self.original_plot.setLabel('left', 'Amplitude (ADC units)')
         self.original_plot.setLabel('bottom', 'Time (s)')
-        self.original_plot.setMouseEnabled(x=False, y=False)
-        self.original_plot.setMenuEnabled(False)
-        self.original_curve = self.original_plot.plot(pen='b')
-        plots_vbox.addWidget(self.original_plot)
+        self.original_curve = self.original_plot.plot(pen=pg.mkPen('b', width=1))
+        time_layout.addWidget(self.original_plot)
 
-        self.filtered_plot = pg.PlotWidget(title="Filtered PPG Signal")
-        self.filtered_plot.setLabel('left', 'Amplitude')
+        # Filtered signal with peaks
+        self.filtered_plot = pg.PlotWidget(title="Filtered PPG Signal & Peak Detection")
+        self.filtered_plot.setLabel('left', 'Amplitude (normalized)')
         self.filtered_plot.setLabel('bottom', 'Time (s)')
-        self.filtered_plot.setMouseEnabled(x=False, y=False)
-        self.filtered_plot.setMenuEnabled(False)
-        self.filtered_curve = self.filtered_plot.plot(pen='g')
-        plots_vbox.addWidget(self.filtered_plot)
+        self.filtered_curve = self.filtered_plot.plot(pen=pg.mkPen('g', width=1.5))
+        
+        self.peak_scatter = pg.ScatterPlotItem(
+            size=8, brush=pg.mkBrush(255, 0, 0, 200), 
+            symbol='o', pen=pg.mkPen('r', width=2)
+        )
+        self.filtered_plot.addItem(self.peak_scatter)
+        self.rr_lines = []
+        time_layout.addWidget(self.filtered_plot)
+        
+        return time_tab
 
-        # Plot controls (slider and checkbox)
-        plot_controls_layout = QtWidgets.QHBoxLayout()
-        self.jump_to_end_checkbox = QtWidgets.QCheckBox("Jump to End")
+    def create_hrv_tab(self):
+        """Create HRV analysis tab."""
+        hrv_tab = QtWidgets.QWidget()
+        hrv_layout = QtWidgets.QVBoxLayout(hrv_tab)
+        
+        self.hrv_plot = pg.PlotWidget(title="R-R Interval Time Series (Tachogram)")
+        self.hrv_plot.setLabel('left', 'R-R Interval (ms)')
+        self.hrv_plot.setLabel('bottom', 'Beat Number')
+        self.hrv_curve = self.hrv_plot.plot(pen=pg.mkPen('c', width=2), symbol='o', symbolSize=4)
+        hrv_layout.addWidget(self.hrv_plot)
+        
+        return hrv_tab
+
+    def create_plot_controls(self):
+        """Create plot navigation controls."""
+        controls_layout = QtWidgets.QHBoxLayout()
+        
+        # Auto-scroll
+        self.jump_to_end_checkbox = QtWidgets.QCheckBox("Auto-scroll to end")
         self.jump_to_end_checkbox.setChecked(self.is_jump_to_end_enabled)
         self.jump_to_end_checkbox.stateChanged.connect(self.toggle_jump_to_end)
-        plot_controls_layout.addWidget(self.jump_to_end_checkbox)
-
+        controls_layout.addWidget(self.jump_to_end_checkbox)
+        
+        # Time window
+        window_label = QtWidgets.QLabel("Time Window:")
+        self.window_selector = QtWidgets.QComboBox()
+        self.window_selector.addItems(["5s", "10s", "30s", "60s"])
+        self.window_selector.setCurrentText("10s")
+        self.window_selector.currentTextChanged.connect(self.update_time_window)
+        controls_layout.addWidget(window_label)
+        controls_layout.addWidget(self.window_selector)
+        
+        # Slider
         self.plot_slider = QtWidgets.QSlider(QtCore.Qt.Horizontal)
         self.plot_slider.setRange(0, 0)
         self.plot_slider.valueChanged.connect(self.scroll_plots)
         self.plot_slider.sliderPressed.connect(self.disable_jump_to_end)
-        plot_controls_layout.addWidget(self.plot_slider)
-        plots_vbox.addLayout(plot_controls_layout)
+        controls_layout.addWidget(self.plot_slider)
+        
+        return controls_layout
 
-        main_hbox.addLayout(plots_vbox, 3)  # 75% width for plots
+    def create_controls_widget(self):
+        """Create the control panel with tabs."""
+        widget = QtWidgets.QWidget()
+        layout = QtWidgets.QVBoxLayout(widget)
+        
+        self.control_tabs = QtWidgets.QTabWidget()
+        
+        # Control tabs
+        self.control_tabs.addTab(self.create_data_tab(), "Data")
+        self.control_tabs.addTab(self.create_filter_tab(), "Filtering")
+        self.analysis_tab = self.create_analysis_tab()
+        self.control_tabs.addTab(self.analysis_tab, "Analysis")
+        self.control_tabs.addTab(self.create_export_tab(), "Export")
+        
+        # Initially disable analysis tab
+        self.control_tabs.setTabEnabled(2, False)
+        
+        layout.addWidget(self.control_tabs)
+        
+        # Status log
+        self.status_text = QtWidgets.QTextEdit()
+        self.status_text.setMaximumHeight(100)
+        self.status_text.setReadOnly(True)
+        self.status_text.setStyleSheet("background-color: #f0f0f0; font-family: Courier; font-size: 10px;")
+        layout.addWidget(QtWidgets.QLabel("Analysis Log:"))
+        layout.addWidget(self.status_text)
+        
+        return widget
 
-        # --- Controls ---
-        controls_vbox = QtWidgets.QVBoxLayout()
-        controls_group = QtWidgets.QGroupBox("Controls")
-        controls_layout = QtWidgets.QFormLayout()
-
-        # Session Loader
+    def create_data_tab(self):
+        """Create data loading tab."""
+        widget = QtWidgets.QWidget()
+        layout = QtWidgets.QFormLayout(widget)
+        
+        # Session selector
         self.session_selector = QtWidgets.QComboBox()
         self.session_selector.addItem("Select a session to load...")
         self.session_selector.currentIndexChanged.connect(self.load_selected_session)
-        controls_layout.addRow("Load Session:", self.session_selector)
+        layout.addRow("Load Session:", self.session_selector)
+        
+        # Quality metrics
+        quality_group = QtWidgets.QGroupBox("Data Quality Metrics")
+        quality_layout = QtWidgets.QFormLayout(quality_group)
+        
+        self.samples_label = QtWidgets.QLabel("-")
+        self.duration_label = QtWidgets.QLabel("-")
+        self.missing_label = QtWidgets.QLabel("-")
+        self.snr_label = QtWidgets.QLabel("-")
+        
+        quality_layout.addRow("Total Samples:", self.samples_label)
+        quality_layout.addRow("Duration:", self.duration_label)
+        quality_layout.addRow("Missing/Invalid:", self.missing_label)
+        quality_layout.addRow("Estimated SNR:", self.snr_label)
+        
+        layout.addRow(quality_group)
+        return widget
 
-        # Filter Type
+    def create_filter_tab(self):
+        """Create signal filtering controls tab."""
+        widget = QtWidgets.QWidget()
+        layout = QtWidgets.QVBoxLayout(widget)
+        
+        # Filter method selection
+        method_layout = QtWidgets.QFormLayout()
+        self.filter_method_combo = QtWidgets.QComboBox()
+        self.filter_method_combo.addItems([
+            "NeuroKit Elgendi", 
+            "Custom Butterworth", 
+            "Savitzky-Golay",
+            "No Filter"
+        ])
+        self.filter_method_combo.currentIndexChanged.connect(self.update_control_visibility)
+        method_layout.addRow("Filter Method:", self.filter_method_combo)
+        layout.addLayout(method_layout)
+        
+        # Filter parameters
+        filter_group = QtWidgets.QGroupBox("Filter Parameters & Application")
+        filter_group_layout = QtWidgets.QVBoxLayout(filter_group)
+        
+        self.butterworth_controls = self.create_butterworth_controls()
+        self.savgol_controls = self.create_savgol_controls()
+        filter_group_layout.addWidget(self.butterworth_controls)
+        filter_group_layout.addWidget(self.savgol_controls)
+        
+        # Apply button
+        apply_btn = QtWidgets.QPushButton("Apply Filter")
+        apply_btn.clicked.connect(self.apply_filter)
+        apply_btn.setStyleSheet("QPushButton { background-color: #4CAF50; color: white; font-weight: bold; padding: 8px; }")
+        filter_group_layout.addWidget(apply_btn)
+        
+        layout.addWidget(filter_group)
+        layout.addStretch()
+        
+        # Filter response
+        response_label = QtWidgets.QLabel("Filter Frequency Response:")
+        response_label.setStyleSheet("font-weight: bold; margin-top: 15px; margin-bottom: 5px;")
+        layout.addWidget(response_label)
+        
+        self.filter_response_plot = pg.PlotWidget()
+        self.filter_response_plot.setLabel('left', 'Magnitude (dB)')
+        self.filter_response_plot.setLabel('bottom', 'Frequency (Hz)')
+        self.filter_response_plot.setMaximumHeight(150)
+        self.filter_response_curve = self.filter_response_plot.plot(pen='r')
+        layout.addWidget(self.filter_response_plot)
+        
+        return widget
+
+    def create_butterworth_controls(self):
+        """Create Butterworth filter controls."""
+        controls = QtWidgets.QGroupBox("Butterworth Parameters")
+        layout = QtWidgets.QFormLayout(controls)
+        
+        # Filter type
         self.filter_type_combo = QtWidgets.QComboBox()
         self.filter_type_combo.addItems(["Bandpass", "Low-pass", "High-pass"])
         self.filter_type_combo.currentIndexChanged.connect(self.update_control_visibility)
-        controls_layout.addRow("Filter Type:", self.filter_type_combo)
+        layout.addRow("Filter Type:", self.filter_type_combo)
+        
+        # Cutoff controls
+        self.low_cutoff_slider = self.create_slider(1, 200, 50, lambda v: f"{v/100:.2f} Hz")
+        self.high_cutoff_slider = self.create_slider(100, 1500, 400, lambda v: f"{v/100:.2f} Hz")
+        self.order_slider = self.create_slider(1, 10, 4, str)
+        
+        self.low_cutoff_widget = self.create_slider_widget("Low Cutoff:", self.low_cutoff_slider)
+        self.high_cutoff_widget = self.create_slider_widget("High Cutoff:", self.high_cutoff_slider)
+        
+        layout.addRow(self.low_cutoff_widget)
+        layout.addRow(self.high_cutoff_widget)
+        layout.addRow(self.create_slider_widget("Filter Order:", self.order_slider))
+        
+        return controls
 
-        # Low Cutoff
-        self.low_cutoff_slider = QtWidgets.QSlider(QtCore.Qt.Horizontal)
-        self.low_cutoff_slider.setRange(1, 100) # 0.1 to 10.0 Hz
-        self.low_cutoff_slider.setValue(5) # Default 0.5 Hz
-        self.low_cutoff_label = QtWidgets.QLabel(f"{self.low_cutoff_slider.value()/10:.1f} Hz")
-        self.low_cutoff_slider.valueChanged.connect(lambda v: self.low_cutoff_label.setText(f"{v/10:.1f} Hz"))
-        self.low_cutoff_widget = self.create_slider_widget("Low Cutoff:", self.low_cutoff_slider, self.low_cutoff_label)
-        controls_layout.addRow(self.low_cutoff_widget)
+    def create_savgol_controls(self):
+        """Create Savitzky-Golay controls."""
+        controls = QtWidgets.QGroupBox("Savitzky-Golay Parameters")
+        layout = QtWidgets.QFormLayout(controls)
+        
+        self.window_length_spin = QtWidgets.QSpinBox()
+        self.window_length_spin.setRange(3, 101)
+        self.window_length_spin.setSingleStep(2)
+        self.window_length_spin.setValue(11)
+        layout.addRow("Window Length:", self.window_length_spin)
+        
+        self.poly_order_spin = QtWidgets.QSpinBox()
+        self.poly_order_spin.setRange(1, 10)
+        self.poly_order_spin.setValue(3)
+        layout.addRow("Polynomial Order:", self.poly_order_spin)
+        
+        return controls
 
-        # High Cutoff
-        self.high_cutoff_slider = QtWidgets.QSlider(QtCore.Qt.Horizontal)
-        self.high_cutoff_slider.setRange(10, 400) # 1.0 to 40.0 Hz
-        self.high_cutoff_slider.setValue(400) # Default 40.0 Hz
-        self.high_cutoff_label = QtWidgets.QLabel(f"{self.high_cutoff_slider.value()/10:.1f} Hz")
-        self.high_cutoff_slider.valueChanged.connect(lambda v: self.high_cutoff_label.setText(f"{v/10:.1f} Hz"))
-        self.high_cutoff_widget = self.create_slider_widget("High Cutoff:", self.high_cutoff_slider, self.high_cutoff_label)
-        controls_layout.addRow(self.high_cutoff_widget)
+    def create_slider(self, min_val, max_val, default, formatter):
+        """Helper to create slider with label."""
+        slider = QtWidgets.QSlider(QtCore.Qt.Horizontal)
+        slider.setRange(min_val, max_val)
+        slider.setValue(default)
+        
+        label = QtWidgets.QLabel(formatter(default))
+        slider.valueChanged.connect(lambda v: label.setText(formatter(v)))
+        slider.label = label  # Store reference
+        
+        return slider
 
-        # Filter Order
-        self.order_slider = QtWidgets.QSlider(QtCore.Qt.Horizontal)
-        self.order_slider.setRange(1, 10)
-        self.order_slider.setValue(5)
-        self.order_label = QtWidgets.QLabel(str(self.order_slider.value()))
-        self.order_slider.valueChanged.connect(lambda v: self.order_label.setText(str(v)))
-        order_widget = self.create_slider_widget("Filter Order:", self.order_slider, self.order_label)
-        controls_layout.addRow(order_widget)
-
-        # Apply Button
-        apply_btn = QtWidgets.QPushButton("Apply Filter")
-        apply_btn.clicked.connect(self.apply_filter)
-        controls_layout.addRow(apply_btn)
-
-        # Save Filtered Data Button
-        self.save_btn = QtWidgets.QPushButton("Save Filtered Data")
-        self.save_btn.clicked.connect(self.save_filtered_data)
-        self.save_btn.setEnabled(False) # Disabled until data is filtered
-        controls_layout.addRow(self.save_btn)
-
-        controls_group.setLayout(controls_layout)
-        controls_vbox.addWidget(controls_group)
-        controls_vbox.addStretch()
-
-        main_hbox.addLayout(controls_vbox, 1) # 25% width for controls
-
-        layout.addLayout(main_hbox)
-
-        self.setLayout(layout)
-        self.update_control_visibility()
-
-    def create_slider_widget(self, label_text, slider, value_label):
+    def create_slider_widget(self, label_text, slider):
+        """Create labeled slider widget."""
         widget = QtWidgets.QWidget()
         layout = QtWidgets.QHBoxLayout()
-        layout.setContentsMargins(0,0,0,0)
+        layout.setContentsMargins(0, 0, 0, 0)
         layout.addWidget(QtWidgets.QLabel(label_text))
-        layout.addWidget(slider)
-        layout.addWidget(value_label)
+        layout.addWidget(slider, 1)
+        layout.addWidget(slider.label)
         widget.setLayout(layout)
         return widget
 
+    def create_analysis_tab(self):
+        """Create analysis tools tab."""
+        widget = QtWidgets.QWidget()
+        layout = QtWidgets.QVBoxLayout(widget)
+        
+        # Peak detection
+        peak_group = QtWidgets.QGroupBox("Peak Detection")
+        peak_layout = QtWidgets.QVBoxLayout(peak_group)
+        
+        info_label = QtWidgets.QLabel("Note: Apply filtering first before peak detection")
+        info_label.setStyleSheet("color: #666; font-style: italic; margin-bottom: 10px;")
+        peak_layout.addWidget(info_label)
+        
+        method_layout = QtWidgets.QFormLayout()
+        self.peak_method_combo = QtWidgets.QComboBox()
+        self.peak_method_combo.addItems(["NeuroKit Elgendi", "NeuroKit Bishop", "NeuroKit Charlton"])
+        method_layout.addRow("Detection Method:", self.peak_method_combo)
+        peak_layout.addLayout(method_layout)
+        
+        detect_peaks_btn = QtWidgets.QPushButton("Detect Peaks")
+        detect_peaks_btn.clicked.connect(self.detect_peaks)
+        peak_layout.addWidget(detect_peaks_btn)
+        layout.addWidget(peak_group)
+        
+        # HRV analysis
+        hrv_group = QtWidgets.QGroupBox("Heart Rate Variability Analysis")
+        hrv_layout = QtWidgets.QVBoxLayout(hrv_group)
+        
+        analyze_hrv_btn = QtWidgets.QPushButton("Compute HRV Metrics")
+        analyze_hrv_btn.clicked.connect(self.analyze_hrv)
+        hrv_layout.addWidget(analyze_hrv_btn)
+        
+        self.hrv_results = QtWidgets.QTextEdit()
+        self.hrv_results.setMaximumHeight(150)
+        self.hrv_results.setReadOnly(True)
+        self.hrv_results.setStyleSheet("font-family: monospace; font-size: 10px;")
+        hrv_layout.addWidget(self.hrv_results)
+        layout.addWidget(hrv_group)
+        
+        # Signal quality
+        quality_group = QtWidgets.QGroupBox("Signal Quality Assessment")
+        quality_layout = QtWidgets.QVBoxLayout(quality_group)
+        
+        assess_quality_btn = QtWidgets.QPushButton("Assess Signal Quality")
+        assess_quality_btn.clicked.connect(self.assess_signal_quality)
+        quality_layout.addWidget(assess_quality_btn)
+        
+        self.quality_results = QtWidgets.QTextEdit()
+        self.quality_results.setMaximumHeight(100)
+        self.quality_results.setReadOnly(True)
+        self.quality_results.setStyleSheet("font-family: monospace; font-size: 10px;")
+        quality_layout.addWidget(self.quality_results)
+        layout.addWidget(quality_group)
+        
+        layout.addStretch()
+        return widget
+
+    def create_export_tab(self):
+        """Create data export tab."""
+        widget = QtWidgets.QWidget()
+        layout = QtWidgets.QFormLayout(widget)
+        
+        # Export options
+        export_group = QtWidgets.QGroupBox("Export Content Selection")
+        export_layout = QtWidgets.QVBoxLayout(export_group)
+        
+        self.export_raw_check = QtWidgets.QCheckBox("Raw PPG signal")
+        self.export_filtered_check = QtWidgets.QCheckBox("Filtered PPG signal")
+        self.export_peaks_check = QtWidgets.QCheckBox("Peak locations and times")
+        self.export_hrv_check = QtWidgets.QCheckBox("HRV metrics and analysis")
+        self.export_metadata_check = QtWidgets.QCheckBox("Session metadata")
+        
+        # Default selections
+        for checkbox in [self.export_raw_check, self.export_filtered_check, 
+                        self.export_peaks_check, self.export_hrv_check]:
+            checkbox.setChecked(True)
+            export_layout.addWidget(checkbox)
+        export_layout.addWidget(self.export_metadata_check)
+            
+        layout.addRow(export_group)
+        
+        # Format selection
+        self.export_format_combo = QtWidgets.QComboBox()
+        self.export_format_combo.addItems(["CSV", "TXT (Tab-separated)"])
+        layout.addRow("Export Format:", self.export_format_combo)
+        
+        # Export button
+        export_btn = QtWidgets.QPushButton("Export Selected Data")
+        export_btn.clicked.connect(self.export_data)
+        export_btn.setStyleSheet("QPushButton { background-color: #4CAF50; color: white; font-weight: bold; padding: 8px; }")
+        layout.addRow(export_btn)
+        
+        return widget
+
+    def log_status(self, message):
+        """Add timestamped message to status log."""
+        timestamp = datetime.now().strftime("%H:%M:%S")
+        self.status_text.append(f"[{timestamp}] {message}")
+        scrollbar = self.status_text.verticalScrollBar()
+        scrollbar.setValue(scrollbar.maximum())
+
     def start_session(self, username, user_manager):
-        """Called when user logs in."""
+        """Initialize research tab for user session."""
         self.current_user = username
         self.user_manager = user_manager
         self.populate_session_selector()
+        self.log_status(f"Research session started for user: {username}")
 
     def populate_session_selector(self):
-        """Fills the session selector combobox with the user's sessions."""
+        """Populate session selector with available sessions."""
         self.session_selector.clear()
         self.session_selector.addItem("Select a session to load...")
+        
         if not self.user_manager or not self.current_user:
             return
 
@@ -166,199 +454,625 @@ class ResearchTab(QtWidgets.QWidget):
 
         for i, session in enumerate(reversed(history)):
             if "raw_ppg" in session and session["raw_ppg"]:
-                date_str = session.get("start", f"Session {len(history)-i}")
-                self.session_selector.addItem(f"{date_str}", userData=session)
+                start_time = session.get("start", f"Session {len(history)-i}")
+                duration = session.get("duration", "Unknown")
+                sample_count = len(session["raw_ppg"])
+                
+                display_text = f"{start_time} | {duration}s | {sample_count} samples"
+                self.session_selector.addItem(display_text, userData=session)
 
     def load_selected_session(self, index):
-        """Loads the raw PPG data from the selected session and plots it."""
+        """Load and initialize analysis for selected session."""
         if index <= 0:
-            self.raw_ppg_signal = np.array([])
-            self.original_curve.setData([])
-            self.filtered_curve.setData([])
-            self.save_btn.setEnabled(False)
+            self.clear_all_data()
             return
 
         session_data = self.session_selector.itemData(index)
         self.raw_ppg_signal = np.array(session_data.get("raw_ppg", []))
+        self.session_metadata = session_data
+        
+        if self.raw_ppg_signal.size == 0:
+            self.log_status("Warning: No PPG data found in selected session")
+            return
+            
+        # Update displays
+        self.update_metadata_display()
+        self.calculate_data_quality()
+        
+        # Initialize time axis
+        self.time_axis = np.arange(len(self.raw_ppg_signal)) / self.sampling_rate
+        
+        # Display raw signal
+        self.original_curve.setData(self.time_axis, self.raw_ppg_signal)
+        
+        # Reset analysis results
+        self.filtered_curve.clear()
+        self.peak_scatter.clear()
+        self.clear_rr_lines()
+        
+        # Update navigation
+        self.update_slider()
+        self.update_plot_view()
+        
+        self.log_status(f"Loaded session: {len(self.raw_ppg_signal)} samples, {self.time_axis[-1]:.1f}s duration")
 
-        if self.raw_ppg_signal.size > 0:
-            # Assuming 50Hz sampling rate from ESP32 packet structure (50 samples per packet)
-            self.sampling_rate = 50
-            self.time_axis = np.arange(len(self.raw_ppg_signal)) / self.sampling_rate
-            self.original_curve.setData(self.time_axis, self.raw_ppg_signal)
-            self.filtered_curve.clear()  # Clear filtered plot on new load
-            self.update_slider()
-            self.update_plot_view()
+    def update_metadata_display(self):
+        """Update session metadata display."""
+        if self.session_metadata:
+            start_time = self.session_metadata.get("start", "Unknown")
+            duration = self.session_metadata.get("duration", "Unknown")
+            samples = len(self.raw_ppg_signal)
+            
+            metadata_text = (f"Session: {start_time} | Duration: {duration}s | "
+                           f"Samples: {samples} | Sampling Rate: {self.sampling_rate}Hz")
+            self.metadata_label.setText(metadata_text)
+
+    def calculate_data_quality(self):
+        """Calculate and display basic data quality metrics."""
+        if self.raw_ppg_signal.size == 0:
+            return
+            
+        samples = len(self.raw_ppg_signal)
+        duration = samples / self.sampling_rate
+        
+        # Missing data
+        invalid_count = np.sum(np.isnan(self.raw_ppg_signal)) + np.sum(np.isinf(self.raw_ppg_signal))
+        
+        # Simple SNR estimate
+        signal_power = np.var(self.raw_ppg_signal)
+        diff_signal = np.diff(self.raw_ppg_signal)
+        noise_power = np.var(diff_signal) / 2
+        snr_db = 10 * np.log10(signal_power / max(noise_power, 1e-10))
+        
+        # Update displays
+        self.samples_label.setText(f"{samples:,}")
+        self.duration_label.setText(f"{duration:.1f}s")
+        self.missing_label.setText(f"{invalid_count} ({invalid_count/samples*100:.1f}%)")
+        self.snr_label.setText(f"{snr_db:.1f} dB")
+
+    def update_control_visibility(self):
+        """Update visibility of filter controls."""
+        method = self.filter_method_combo.currentText()
+        
+        self.butterworth_controls.setVisible("Butterworth" in method)
+        self.savgol_controls.setVisible("Savitzky-Golay" in method)
+        
+        if "Butterworth" in method:
+            filter_type = self.filter_type_combo.currentText()
+            self.low_cutoff_widget.setVisible(filter_type in ["Bandpass", "High-pass"])
+            self.high_cutoff_widget.setVisible(filter_type in ["Bandpass", "Low-pass"])
+
+    def apply_filter(self):
+        """Apply selected filtering method."""
+        if self.raw_ppg_signal.size == 0:
+            self.log_status("Error: No signal loaded to filter")
+            return
+
+        method = self.filter_method_combo.currentText()
+        signal = self.raw_ppg_signal.copy()
+        
+        if method == "Custom Butterworth":
+            self.filtered_ppg_signal = self.apply_butterworth_filter(signal)
+        elif method == "Savitzky-Golay":
+            window_length = self.window_length_spin.value()
+            poly_order = self.poly_order_spin.value()
+            if window_length <= poly_order:
+                window_length = poly_order + 1
+                self.window_length_spin.setValue(window_length)
+                self.log_status(f"Adjusted window length to {window_length}")
+            self.filtered_ppg_signal = savgol_filter(signal, window_length, poly_order)
+        elif "NeuroKit" in method:
+            self.filtered_ppg_signal = nk.ppg_clean(signal, sampling_rate=self.sampling_rate, method="elgendi")
+        else:  # No filter
+            self.filtered_ppg_signal = signal.copy()
+        
+        # Normalize for display
+        if self.filtered_ppg_signal.size > 0:
+            signal_min = np.min(self.filtered_ppg_signal)
+            signal_max = np.max(self.filtered_ppg_signal)
+            if signal_max > signal_min:
+                self.filtered_ppg_signal = ((self.filtered_ppg_signal - signal_min) / (signal_max - signal_min))
+        
+        self.update_filtered_plot()
+        
+        # Enable analysis tab
+        self.filter_applied = True
+        self.control_tabs.setTabEnabled(2, True)
+        
+        self.log_status(f"Applied {method} filter successfully - Analysis tab now enabled")
+
+    def apply_butterworth_filter(self, signal):
+        """Apply Butterworth filter with current settings."""
+        filter_type = self.filter_type_combo.currentText().lower()
+        order = self.order_slider.value()
+        
+        lowcut_hz = self.low_cutoff_slider.value() / 100.0
+        highcut_hz = self.high_cutoff_slider.value() / 100.0
+        
+        # Validate against Nyquist
+        nyquist = self.sampling_rate / 2
+        if highcut_hz >= nyquist:
+            highcut_hz = nyquist * 0.95
+            self.log_status(f"Warning: High cutoff reduced to {highcut_hz:.2f}Hz")
+        
+        # Design filter
+        b, a = self.design_butter_filter(lowcut_hz, highcut_hz, order, filter_type)
+        self.update_filter_response(b, a)
+        
+        return filtfilt(b, a, signal)
+
+    def design_butter_filter(self, lowcut, highcut, order, btype):
+        """Design Butterworth filter."""
+        nyquist = self.sampling_rate / 2
+        
+        if btype in ['low-pass', 'lowpass', 'low']:
+            return butter(order, highcut / nyquist, btype='low')
+        elif btype in ['high-pass', 'highpass', 'high']:
+            return butter(order, lowcut / nyquist, btype='high')
+        else:  # bandpass
+            return butter(order, [lowcut / nyquist, highcut / nyquist], btype='band')
+
+    def update_filter_response(self, b, a):
+        """Update filter frequency response plot."""
+        w, h = freqz(b, a, worN=2048, fs=self.sampling_rate)
+        magnitude_db = 20 * np.log10(np.abs(h) + 1e-10)
+        self.filter_response_curve.setData(w, magnitude_db)
+        self.filter_response_plot.setXRange(0, min(10, self.sampling_rate/2))
+        self.filter_response_plot.setYRange(-60, 5)
+
+    def detect_peaks(self):
+        """Detect cardiac peaks in filtered signal."""
+        if self.filtered_ppg_signal.size == 0:
+            QtWidgets.QMessageBox.warning(
+                self, "No Filtered Signal", 
+                "No filtered signal available. Please apply filtering first."
+            )
+            return
+            
+        method = self.peak_method_combo.currentText()
+        
+        # Map method names
+        method_map = {
+            "NeuroKit Elgendi": "elgendi",
+            "NeuroKit Bishop": "bishop", 
+            "NeuroKit Charlton": "charlton"
+        }
+        
+        nk_method = method_map.get(method, "elgendi")
+        _, info = nk.ppg_peaks(self.filtered_ppg_signal, 
+                             sampling_rate=self.sampling_rate,
+                             method=nk_method)
+        
+        self.peaks = info.get("PPG_Peaks", np.array([]))
+        self.log_status(f"Detected {len(self.peaks)} peaks using {method}")
+        self.update_filtered_plot()
+
+    def update_filtered_plot(self):
+        """Update filtered signal plot with peak markers."""
+        if self.filtered_ppg_signal.size == 0:
+            return
+            
+        time_axis = np.arange(len(self.filtered_ppg_signal)) / self.sampling_rate
+        self.filtered_curve.setData(time_axis, self.filtered_ppg_signal)
+        
+        # Update peak markers
+        if self.peaks.size > 0:
+            peak_times = time_axis[self.peaks]
+            peak_amplitudes = self.filtered_ppg_signal[self.peaks]
+            self.peak_scatter.setData(peak_times, peak_amplitudes)
+            self.update_rr_interval_display(peak_times)
+        else:
+            self.peak_scatter.clear()
+            self.clear_rr_lines()
+
+    def update_rr_interval_display(self, peak_times):
+        """Add visual indicators for R-R intervals."""
+        self.clear_rr_lines()
+        
+        if len(peak_times) < 2:
+            return
+            
+        # Draw lines between consecutive peaks
+        for i in range(len(peak_times) - 1):
+            line = pg.PlotDataItem([peak_times[i], peak_times[i+1]], 
+                                 [0, 0], pen=pg.mkPen('orange', width=3))
+            self.filtered_plot.addItem(line)
+            self.rr_lines.append(line)
+
+    def clear_rr_lines(self):
+        """Remove all R-R interval visual indicators."""
+        for line in self.rr_lines:
+            self.filtered_plot.removeItem(line)
+        self.rr_lines.clear()
+
+    def analyze_hrv(self):
+        """Perform comprehensive heart rate variability analysis."""
+        if self.peaks.size < 10:
+            msg = "No peaks detected" if self.peaks.size == 0 else f"Only {len(self.peaks)} peaks detected"
+            QtWidgets.QMessageBox.warning(self, "Insufficient Peaks", 
+                f"{msg}. HRV analysis requires at least 10 peaks.")
+            return
+            
+        # Calculate R-R intervals in milliseconds
+        rr_intervals = np.diff(self.peaks) / self.sampling_rate * 1000
+        
+        # Filter physiologically plausible intervals (300-2000ms)
+        valid_mask = (rr_intervals > 300) & (rr_intervals < 2000)
+        valid_rr = rr_intervals[valid_mask]
+        
+        if len(valid_rr) < 5:
+            self.hrv_results.setText("Error: Insufficient valid R-R intervals for analysis")
+            return
+        
+        # Time domain metrics
+        rr_mean = np.mean(valid_rr)
+        rr_std = np.std(valid_rr)  # SDNN
+        rmssd = np.sqrt(np.mean(np.diff(valid_rr)**2))
+        pnn50 = np.sum(np.abs(np.diff(valid_rr)) > 50) / len(np.diff(valid_rr)) * 100
+        
+        # Frequency domain analysis using NeuroKit
+        vlf_power = lf_power = hf_power = lf_hf_ratio = 0
+        
+        try:
+            # Use NeuroKit's hrv_frequency with peaks directly
+            # Filter the original peaks to match valid RR intervals
+            valid_peaks = self.peaks[:-1][valid_mask]  # Remove last peak since we have n-1 intervals
+            valid_peaks = np.append(valid_peaks, self.peaks[len(valid_peaks)])  # Add the corresponding last peak
+            
+            if len(valid_peaks) > 20:  # Minimum for frequency analysis
+                # Use NeuroKit's time domain analysis which includes frequency domain
+                hrv_time = nk.hrv_time(valid_peaks, sampling_rate=self.sampling_rate, show=False)
+                hrv_freq = nk.hrv_frequency(valid_peaks, sampling_rate=self.sampling_rate, show=False)
+                
+                # Extract frequency domain metrics
+                vlf_power = hrv_freq.get('HRV_VLF', [0]).iloc[0] if 'HRV_VLF' in hrv_freq.columns else 0
+                lf_power = hrv_freq.get('HRV_LF', [0]).iloc[0] if 'HRV_LF' in hrv_freq.columns else 0
+                hf_power = hrv_freq.get('HRV_HF', [0]).iloc[0] if 'HRV_HF' in hrv_freq.columns else 0
+                lf_hf_ratio = lf_power / hf_power if hf_power > 0 else 0
+                
+        except Exception as e:
+            self.log_status(f"Frequency domain analysis failed: {str(e)}")
+            # Continue with time domain only
+        
+        # Nonlinear metrics (Poincaré plot parameters)
+        sd1 = np.std(np.diff(valid_rr) / np.sqrt(2))
+        sd2 = np.sqrt(2 * rr_std**2 - sd1**2) if 2 * rr_std**2 > sd1**2 else 0
+        sd_ratio = sd1 / sd2 if sd2 > 0 else 0
+        
+        # Store results
+        self.hrv_metrics = {
+            'time_domain': {
+                'mean_rr': rr_mean, 'sdnn': rr_std, 'rmssd': rmssd,
+                'pnn50': pnn50, 'heart_rate': 60000 / rr_mean
+            },
+            'frequency_domain': {
+                'vlf_power': vlf_power, 'lf_power': lf_power,
+                'hf_power': hf_power, 'lf_hf_ratio': lf_hf_ratio
+            },
+            'nonlinear': {'sd1': sd1, 'sd2': sd2, 'sd_ratio': sd_ratio}
+        }
+        
+        # Display results
+        results_text = "<br>".join([
+                # --- TIME DOMAIN ---
+                f"<span style='font-size:14px; color:#37474F;'>TIME DOMAIN METRICS</span>",
+                (f"<span style='font-size:12px; color:#2E7D32;'>Mean R-R: </span>"
+                f"<span style='font-size:12px; color:#263238;'>{rr_mean:.1f} ms</span>"),
+                (f"<span style='font-size:12px; color:#2E7D32;'>SDNN: </span>"
+                f"<span style='font-size:12px; color:#263238;'>{rr_std:.1f} ms</span>"),
+                (f"<span style='font-size:12px; color:#2E7D32;'>RMSSD: </span>"
+                f"<span style='font-size:12px; color:#263238;'>{rmssd:.1f} ms</span>"),
+                (f"<span style='font-size:12px; color:#2E7D32;'>pNN50: </span>"
+                f"<span style='font-size:12px; color:#263238;'>{pnn50:.1f}%</span>"),
+                (f"<span style='font-size:12px; color:#2E7D32;'>Heart Rate: </span>"
+                f"<span style='font-size:12px; color:#263238;'>{60000/rr_mean:.1f} bpm</span>"),
+                "", 
+
+                # --- FREQUENCY DOMAIN ---
+                f"<span style='font-size:14px; color:#37474F;'>FREQUENCY DOMAIN</span>",
+                (f"<span style='font-size:12px; color:#2E7D32;'>VLF Power: </span>"
+                f"<span style='font-size:12px; color:#263238;'>{vlf_power:.3f} ms²</span>"),
+                (f"<span style='font-size:12px; color:#2E7D32;'>LF Power: </span>"
+                f"<span style='font-size:12px; color:#263238;'>{lf_power:.3f} ms²</span>"),
+                (f"<span style='font-size:12px; color:#2E7D32;'>HF Power: </span>"
+                f"<span style='font-size:12px; color:#263238;'>{hf_power:.3f} ms²</span>"),
+                (f"<span style='font-size:12px; color:#2E7D32;'>LF/HF Ratio: </span>"
+                f"<span style='font-size:12px; color:#263238;'>{lf_hf_ratio:.2f}</span>"),
+                "",  
+
+                # --- NONLINEAR METRICS ---
+                f"<span style='font-size:14px; color:#37474F;'>NONLINEAR METRICS</span>",
+                (f"<span style='font-size:12px; color:#2E7D32;'>SD1: </span>"
+                f"<span style='font-size:12px; color:#263238;'>{sd1:.2f} ms</span>"),
+                (f"<span style='font-size:12px; color:#2E7D32;'>SD2: </span>"
+                f"<span style='font-size:12px; color:#263238;'>{sd2:.2f} ms</span>"),
+                (f"<span style='font-size:12px; color:#2E7D32;'>SD1/SD2 Ratio: </span>"
+                f"<span style='font-size:12px; color:#263238;'>{sd_ratio:.3f}</span>")
+            ])
+        
+        self.hrv_results.setText(results_text)
+        
+        # Update tachogram
+        beat_numbers = np.arange(len(valid_rr))
+        self.hrv_curve.setData(beat_numbers, valid_rr)
+        
+        self.log_status(f"HRV analysis completed: {len(valid_rr)} intervals analyzed")
+
+    def assess_signal_quality(self):
+        """Perform signal quality assessment using NeuroKit."""
+        if self.raw_ppg_signal.size == 0:
+            self.quality_results.setText("No signal loaded for quality assessment")
+            return
+            
+        if self.filtered_ppg_signal.size == 0:
+            self.quality_results.setText("No filtered signal available. Please apply filtering first.")
+            return
+        
+        # Use NeuroKit quality assessment
+        if self.peaks.size > 0:
+            quality_scores = nk.ppg_quality(
+                self.filtered_ppg_signal, 
+                peaks=self.peaks,
+                sampling_rate=self.sampling_rate, 
+                method='templatematch'
+            )
+        else:
+            quality_scores = nk.ppg_quality(
+                self.filtered_ppg_signal, 
+                sampling_rate=self.sampling_rate, 
+                method='templatematch'
+            )
+        
+        # Calculate statistics
+        mean_quality = np.mean(quality_scores)
+        std_quality = np.std(quality_scores)
+        min_quality = np.min(quality_scores)
+        max_quality = np.max(quality_scores)
+        
+        high_quality_pct = np.sum(quality_scores > 0.7) / len(quality_scores) * 100
+        poor_quality_pct = np.sum(quality_scores < 0.3) / len(quality_scores) * 100
+        
+        # Additional metrics
+        samples = len(self.raw_ppg_signal)
+        duration = samples / self.sampling_rate
+        invalid_count = np.sum(np.isnan(self.raw_ppg_signal)) + np.sum(np.isinf(self.raw_ppg_signal))
+        
+        signal_power = np.var(self.filtered_ppg_signal)
+        noise_estimate = np.var(np.diff(self.raw_ppg_signal))
+        snr_db = 10 * np.log10(signal_power / max(noise_estimate, 1e-10))
+        
+        # Quality rating
+        if mean_quality >= 0.8:
+            quality_rating = "Excellent"
+        elif mean_quality >= 0.6:
+            quality_rating = "Good"
+        elif mean_quality >= 0.4:
+            quality_rating = "Fair"
+        else:
+            quality_rating = "Poor"
+        
+        # Store metrics
+        self.signal_quality_metrics = {
+            'nk_mean_quality': mean_quality,
+            'overall_rating': quality_rating,
+            'high_quality_pct': high_quality_pct,
+            'poor_quality_pct': poor_quality_pct,
+            'snr_db': snr_db,
+            'invalid_data_pct': invalid_count/samples*100,
+        }
+        
+        # Display results
+        results_text = "<br>".join([
+            f"<span style='font-size:14px;  color:#37474F;'>PPG SIGNAL QUALITY ASSESSMENT</span>",
+            f"<span style='font-size:12px; color:#2E7D32;'>Overall Quality:</span> "
+            f"<span style='font-size:12px; color:#263238;'>{mean_quality:.3f} ({quality_rating})</span>",
+            "",
+            f"<span style='font-size:12px;  color:#455A64;'>NEUROKIT TEMPLATE MATCHING:</span>",
+            f"<span style='font-size:12px;  color:#2E7D32;'>Mean Quality Score:</span>"
+            f"<span style='font-size:12px; color:#263238;'>{mean_quality:.3f}</span>",
+            f"<span style='font-size:12px;  color:#2E7D32;'>Quality Range:</span> "
+            f"<span style='font-size:12px; color:#263238;'>{min_quality:.3f} - {max_quality:.3f}</span>",
+            f"<span style='font-size:12px;  color:#2E7D32;'>Standard Deviation:</span> "
+            f"<span style='font-size:12px; color:#263238;'>{std_quality:.3f}</span>",
+            "",
+            f"<span style='font-size:12px; color:#455A64;'>QUALITY DISTRIBUTION:</span>",
+            f"<span style='font-size:12px; color:#2E7D32;'>High Quality (>0.7):</span>"
+            f"<span style='font-size:12px; color:#263238;'>{high_quality_pct:.1f}%</span>",
+            f"<span style='font-size:12px; color:#2E7D32;'>Poor Quality (&lt;0.3):</span>"
+            f"<span style='font-size:12px; color:#263238;'>{poor_quality_pct:.1f}%</span>",
+            "",
+            f"<span style='font-size:12px; color:#455A64;'>ADDITIONAL METRICS:</span>",
+            f"<span style='font-size:12px;  color:#2E7D32;'>SNR:</span>"
+            f"<span style='font-size:12px; color:#263238;'>{snr_db:.1f} dB</span>",
+            f"<span style='font-size:12px;  color:#2E7D32;'>Invalid Data:</span> "
+            f"<span style='font-size:12px; color:#263238;'>{invalid_count/samples*100:.1f}%</span>",
+            f"<span style='font-size:12px;  color:#2E7D32;'>Duration:</span>"
+            f"<span style='font-size:12px; color:#263238;'>{duration:.1f}s</span>",
+            f"<span style='font-size:12px;  color:#2E7D32;'>Samples:</span> "
+            f"<span style='font-size:12px; color:#263238;'>{samples:,}</span>"
+        ])
+        
+        self.quality_results.setText(results_text)
+        self.log_status(f"Signal quality assessed: {quality_rating} (score: {mean_quality:.3f})")
+
+    def export_data(self):
+        """Export selected analysis data."""
+        if self.raw_ppg_signal.size == 0:
+            QtWidgets.QMessageBox.warning(self, "No Data", "No data available for export")
+            return
+        
+        # Determine export content
+        export_items = []
+        if self.export_raw_check.isChecked():
+            export_items.append("raw")
+        if self.export_filtered_check.isChecked() and self.filtered_ppg_signal.size > 0:
+            export_items.append("filtered")
+        if self.export_peaks_check.isChecked() and self.peaks.size > 0:
+            export_items.append("peaks")
+        if self.export_hrv_check.isChecked() and self.hrv_metrics:
+            export_items.append("hrv")
+        if self.export_metadata_check.isChecked():
+            export_items.append("metadata")
+        
+        if not export_items:
+            QtWidgets.QMessageBox.warning(self, "No Selection", "Please select data to export")
+            return
+        
+        # File dialog
+        session_name = self.session_selector.currentText().split(" | ")[0]
+        default_name = f"ppg_analysis_{self.current_user}_{session_name}"
+        
+        file_format = self.export_format_combo.currentText()
+        ext = "csv" if file_format == "CSV" else "txt"
+        file_filter = f"{ext.upper()} Files (*.{ext});;All Files (*)"
+        
+        filename, _ = QtWidgets.QFileDialog.getSaveFileName(
+            self, f"Export Data ({file_format})", 
+            f"{default_name}.{ext}", file_filter
+        )
+        
+        if not filename:
+            return
+        
+        self._export_to_file(filename, export_items, file_format)
+        QtWidgets.QMessageBox.information(
+            self, "Export Successful", 
+            f"Data exported successfully to:\n{os.path.basename(filename)}"
+        )
+        self.log_status(f"Data exported to {filename}")
+
+    def _export_to_file(self, filename, export_items, file_format):
+        """Handle actual file writing."""
+        time_axis = np.arange(len(self.raw_ppg_signal)) / self.sampling_rate
+        separator = ',' if file_format == "CSV" else '\t'
+        
+        # Main data
+        data_dict = {'Time_s': time_axis}
+        
+        if "raw" in export_items:
+            data_dict['Raw_PPG'] = self.raw_ppg_signal
+        if "filtered" in export_items:
+            data_dict['Filtered_PPG'] = self.filtered_ppg_signal
+        
+        df = pd.DataFrame(data_dict)
+        
+        # Peak markers
+        if "peaks" in export_items:
+            peak_column = np.zeros(len(time_axis))
+            peak_column[self.peaks] = 1
+            df['Peak_Marker'] = peak_column
+        
+        df.to_csv(filename, sep=separator, index=False)
+        
+        # Export HRV metrics separately
+        if "hrv" in export_items and self.hrv_metrics:
+            hrv_filename = filename.replace(f'.{filename.split(".")[-1]}', f'_hrv.{filename.split(".")[-1]}')
+            self._export_hrv_data(hrv_filename, separator)
+        
+        # Export metadata separately
+        if "metadata" in export_items and self.session_metadata:
+            meta_filename = filename.replace(f'.{filename.split(".")[-1]}', f'_metadata.{filename.split(".")[-1]}')
+            self._export_metadata(meta_filename, separator)
+
+    def _export_hrv_data(self, filename, separator):
+        """Export HRV metrics to separate file."""
+        rows = []
+        for category, metrics in self.hrv_metrics.items():
+            for metric, value in metrics.items():
+                rows.append({'Category': category, 'Metric': metric, 'Value': value})
+        pd.DataFrame(rows).to_csv(filename, sep=separator, index=False)
+
+    def _export_metadata(self, filename, separator):
+        """Export session metadata to separate file."""
+        rows = []
+        for key, value in self.session_metadata.items():
+            rows.append({'Parameter': key, 'Value': str(value)})
+        pd.DataFrame(rows).to_csv(filename, sep=separator, index=False)
+
+    def clear_all_data(self):
+        """Clear all data and reset interface."""
+        # Reset data
+        self.raw_ppg_signal = np.array([])
+        self.filtered_ppg_signal = np.array([])
+        self.peaks = np.array([])
+        self.time_axis = np.array([])
+        self.session_metadata = {}
+        self.filter_applied = False
+        
+        # Disable analysis tab
+        self.control_tabs.setTabEnabled(2, False)
+        
+        # Reset results
+        self.hrv_metrics = {}
+        self.signal_quality_metrics = {}
+        
+        # Clear plots
+        self.original_curve.clear()
+        self.filtered_curve.clear()
+        self.peak_scatter.clear()
+        self.hrv_curve.clear()
+        self.filter_response_curve.clear()
+        self.clear_rr_lines()
+        
+        # Clear displays
+        self.hrv_results.clear()
+        self.quality_results.clear()
+        self.metadata_label.setText("")
+        
+        for label in [self.samples_label, self.duration_label, self.missing_label, self.snr_label]:
+            label.setText("-")
+
+    def update_time_window(self, window_text):
+        """Update time window for plot display."""
+        window_map = {"5s": 5, "10s": 10, "30s": 30, "60s": 60}
+        self.plot_window_seconds = window_map.get(window_text, 10)
+        self.update_plot_view()
 
     def update_plot_view(self):
-        """
-        Sets the visible range of the plots based on slider position or auto-scroll.
-        """
-        if not self.time_axis.size > 0:
+        """Update visible time range of plots."""
+        if self.time_axis.size == 0:
             return
 
         max_time = self.time_axis[-1]
-
+        
         if self.is_jump_to_end_enabled:
             start_time = max(0, max_time - self.plot_window_seconds)
         else:
             start_time = self.plot_slider.value() / 100.0
 
         end_time = start_time + self.plot_window_seconds
+        
         self.original_plot.setXRange(start_time, end_time, padding=0)
         self.filtered_plot.setXRange(start_time, end_time, padding=0)
+        self.hrv_plot.setXRange(start_time, end_time, padding=0)
 
     def update_slider(self):
-        """
-        Updates the range and position of the time-scroll slider.
-        """
-        if not self.time_axis.size > 0:
+        """Update plot navigation slider."""
+        if self.time_axis.size == 0:
+            self.plot_slider.setMaximum(0)
             return
 
         max_time = self.time_axis[-1]
         scrollable_duration = max(0, max_time - self.plot_window_seconds)
-
         self.plot_slider.setMaximum(int(scrollable_duration * 100))
+        
         if self.is_jump_to_end_enabled:
             self.plot_slider.blockSignals(True)
             self.plot_slider.setValue(self.plot_slider.maximum())
             self.plot_slider.blockSignals(False)
 
     def scroll_plots(self, value):
-        """
-        Update the plot view when the slider is moved manually.
-        """
+        """Handle manual plot scrolling."""
         if not self.is_jump_to_end_enabled:
             self.update_plot_view()
 
     def disable_jump_to_end(self):
-        """
-        Disables auto-scrolling when the user interacts with the slider.
-        """
+        """Disable auto-scrolling when user interacts with slider."""
         self.jump_to_end_checkbox.setChecked(False)
 
     def toggle_jump_to_end(self, state):
-        """
-        Enables or disables auto-scrolling based on the checkbox state.
-        """
+        """Toggle auto-scrolling behavior."""
         self.is_jump_to_end_enabled = (state == QtCore.Qt.Checked)
         if self.is_jump_to_end_enabled:
             self.update_slider()
         self.update_plot_view()
-
-    def update_control_visibility(self):
-        """Shows/hides cutoff sliders based on selected filter type."""
-        filter_type = self.filter_type_combo.currentText()
-        if filter_type == "Bandpass":
-            self.low_cutoff_widget.setVisible(True)
-            self.high_cutoff_widget.setVisible(True)
-        elif filter_type == "Low-pass":
-            self.low_cutoff_widget.setVisible(False)
-            self.high_cutoff_widget.setVisible(True)
-        elif filter_type == "High-pass":
-            self.low_cutoff_widget.setVisible(True)
-            self.high_cutoff_widget.setVisible(False)
-
-    def apply_filter(self):
-        """Applies the selected filter to the raw signal and plots the result."""
-        if self.raw_ppg_signal.size == 0:
-            print("No signal loaded to filter.")
-            self.save_btn.setEnabled(False)
-            return
-
-        filter_type = self.filter_type_combo.currentText()
-        order = self.order_slider.value()
-
-        fs = self.sampling_rate
-        nyquist = 0.5 * fs
-
-        # Normalise between [0, 1]
-        lowcut = self.low_cutoff_slider.value() / nyquist
-        highcut = self.high_cutoff_slider.value() / nyquist
-
-        try:
-            b, a = self.butter_filter(lowcut, highcut, self.sampling_rate, order, btype=filter_type.lower())
-            self.filtered_ppg_signal = filtfilt(b, a, self.raw_ppg_signal)
-
-            self.time_axis = np.arange(len(self.filtered_ppg_signal)) / self.sampling_rate
-            self.filtered_curve.setData(self.time_axis, self.filtered_ppg_signal)
-            self.update_slider()
-            self.update_plot_view()
-            self.save_btn.setEnabled(True)
-        except ValueError as e:
-            print(f"Error applying filter: {e}")
-            self.save_btn.setEnabled(False)
-            
-            # show error to user
-            msg_box = QtWidgets.QMessageBox()
-            msg_box.setIcon(QtWidgets.QMessageBox.Warning)
-            msg_box.setText("Filter Error")
-            msg_box.setInformativeText(f"Could not apply filter. Check parameters.\nError: {e}")
-            msg_box.setWindowTitle("Warning")
-            msg_box.exec_()
-
-            msg_box.setWindowTitle("Warning")
-            msg_box.exec_()
-
-    def save_filtered_data(self):
-        """Saves the filtered PPG signal to a CSV file."""
-        if self.filtered_ppg_signal.size == 0:
-            QtWidgets.QMessageBox.warning(self, "No Data", "There is no filtered data to save.")
-            return
-
-        # Suggest a filename
-        selected_session_text = self.session_selector.currentText().split("T")[0]
-        filename = f"filtered_ppg_{self.current_user}_{selected_session_text}.csv"
-
-        # Open file dialog
-        options = QtWidgets.QFileDialog.Options()
-        options |= QtWidgets.QFileDialog.DontUseNativeDialog
-        file_path, _ = QtWidgets.QFileDialog.getSaveFileName(
-            self,
-            "Save Filtered Data",
-            filename,
-            "CSV Files (*.csv);;All Files (*)",
-            options=options
-        )
-
-        if file_path:
-            try:
-                time_axis = np.arange(len(self.filtered_ppg_signal)) / self.sampling_rate
-                data_to_save = np.vstack((time_axis, self.filtered_ppg_signal)).T
-                np.savetxt(file_path, data_to_save, delimiter=',', header='Time (s),Filtered PPG', comments='')
-                QtWidgets.QMessageBox.information(self, "Success", f"Data saved successfully to:\n{os.path.basename(file_path)}")
-            except Exception as e:
-                QtWidgets.QMessageBox.critical(self, "Error", f"Failed to save data.\nError: {e}")
-
-
-
-
-
-    def butter_filter(self, lowcut, highcut, fs, order=5, btype='band'):
-        """
-        Designs a Butterworth filter.
-
-        Args:
-            lowcut (float): Lower cutoff frequency (Hz).
-            highcut (float): Higher cutoff frequency (Hz).
-            fs (int): Sampling rate (Hz).
-            order (int): Filter order.
-            btype (str): Type of filter {'lowpass', 'highpass', 'bandpass'}.
-
-        Returns:
-            tuple: Numerator (b) and denominator (a) polynomials of the IIR filter.
-        """
-        nyquist = 0.5 * fs
-        
-        if btype == 'low-pass':
-            high = highcut / nyquist
-            b, a = butter(order, high, btype='low')
-        elif btype == 'high-pass':
-            low = lowcut / nyquist
-            b, a = butter(order, low, btype='high')
-        else: # bandpass
-            low = lowcut / nyquist
-            high = highcut / nyquist
-            b, a = butter(order, [low, high], btype='band')
-            
-        return b, a
