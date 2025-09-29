@@ -178,22 +178,35 @@ class HistoryTab(QtWidgets.QWidget):
             overall_min = np.min(all_bpms)
             overall_max = np.max(all_bpms)
             
-            # Health insights
+            # Health status
             health_status = "Normal"
+            status_color = "#4CAF50"
             if overall_avg < 60:
                 health_status = "Below Normal (Bradycardia)"
+                status_color = "#FF9800"
             elif overall_avg > 100:
                 health_status = "Above Normal (Tachycardia)"
+                status_color = "#FF5722"
             
             summary_text = f"""
-            <b>Overall Health Metrics:</b><br>
-            • Total Sessions: {total_sessions}<br>
-            • Total Recording Time: {total_duration:.1f} minutes<br>
-            • Average BPM: {overall_avg:.1f} ({health_status})<br>
-            • BPM Range: {overall_min:.1f} - {overall_max:.1f}<br>
-            • Abnormal Low Readings (&lt;40): {all_low_count}<br>
-            • Abnormal High Readings (&gt;200): {all_high_count}<br>
-            """
+                <div style='line-height: 1.6;'>
+                <b style='font-size: 14px; color: {status_color};'>Overall Health Status: {health_status}</b><br><br>
+                
+                <b>📊 Session Statistics:</b><br>
+                • Total Sessions: {total_sessions}<br>
+                • Total Recording Time: {total_duration:.1f} minutes ({total_duration/60:.1f} hours)<br>
+                • Average Session Length: {total_duration/total_sessions:.1f} minutes<br><br>
+                
+                <b>❤️ Heart Rate Metrics:</b><br>
+                • Average BPM: {overall_avg:.1f}<br>
+                • Range: {overall_min:.1f} - {overall_max:.1f} BPM<br>
+                
+                <b>⚠️ Abnormal Readings:</b><br>
+                • Low Readings (&lt;40 BPM): {all_low_count}<br>
+                • High Readings (&gt;200 BPM): {all_high_count}<br>
+                • Total Abnormal: {all_low_count + all_high_count}
+                </div>
+                """
             
             # Add recent trend
             if len(history) >= 2:
