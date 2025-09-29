@@ -1,3 +1,4 @@
+neurokit2
 numpy
 pyqt5
 pyqtgraph
