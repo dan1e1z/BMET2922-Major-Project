@@ -2,6 +2,9 @@ from PyQt5 import QtWidgets, QtCore, QtGui
 import pyqtgraph as pg
 import numpy as np
 from datetime import datetime
+from ppg_health_monitor.utils.plot_style_helper import PlotStyleHelper
+from ppg_health_monitor.utils.session_info_formatter import SessionInfoFormatter
+
 class HistoryTab(QtWidgets.QWidget):
     """
     Tab widget for displaying user's health history, session stats, and BPM distribution analysis.
@@ -103,12 +106,17 @@ class HistoryTab(QtWidgets.QWidget):
         
         # Create plot widget
         self.plot = pg.PlotWidget()
-        self.plot.setLabel('left', 'Frequency')
-        self.plot.setLabel('bottom', 'BPM')
-        self.plot.showGrid(True, True)
-        self.plot.setMouseEnabled(x=False, y=False)  # Disable mouse interaction
-        self.plot.setMenuEnabled(False)  # Disable context menu
-        # self.plot.enableAutoRange(False)  # Prevent auto-scaling
+        PlotStyleHelper.configure_plot_widget(
+            self.plot,
+            title="",           # Use default or set a title if needed
+            x_label="BPM",
+            x_units="",
+            y_label="Frequency",
+            y_units="",
+            grid=True,
+            mouse_enabled=False,
+            menu_enabled=False
+        )
         layout.addWidget(self.plot)
         
         # Analysis text
@@ -179,14 +187,8 @@ class HistoryTab(QtWidgets.QWidget):
             overall_max = np.max(all_bpms)
             
             # Health status
-            health_status = "Normal"
-            status_color = "#4CAF50"
-            if overall_avg < 60:
-                health_status = "Below Normal (Bradycardia)"
-                status_color = "#FF9800"
-            elif overall_avg > 100:
-                health_status = "Above Normal (Tachycardia)"
-                status_color = "#FF5722"
+            health_status, status_color = SessionInfoFormatter.format_bpm_status(overall_avg)
+            total_duration_formatted = SessionInfoFormatter.format_duration(total_duration)
             
             summary_text = f"""
                 <div style='line-height: 1.6;'>
@@ -194,7 +196,7 @@ class HistoryTab(QtWidgets.QWidget):
                 
                 <b>📊 Session Statistics:</b><br>
                 • Total Sessions: {total_sessions}<br>
-                • Total Recording Time: {total_duration:.1f} minutes ({total_duration/60:.1f} hours)<br>
+                • Total Recording Time: {total_duration_formatted}<br>
                 • Average Session Length: {total_duration/total_sessions:.1f} minutes<br><br>
                 
                 <b>❤️ Heart Rate Metrics:</b><br>
@@ -230,7 +232,7 @@ class HistoryTab(QtWidgets.QWidget):
         self.history_table.setRowCount(len(history))
 
         for i, session in enumerate(reversed(history)):
-            date_str = datetime.fromisoformat(session["start"]).strftime("%Y-%m-%d %H:%M")
+            date_str = SessionInfoFormatter.format_datetime(session["start"])
             duration = session.get("duration_minutes", 0)
             avg_bpm = session.get("avg_bpm", 0)
             min_bpm = session.get("min_bpm", 0)
@@ -310,9 +312,17 @@ class HistoryTab(QtWidgets.QWidget):
         self.plot.addItem(bar_plot)
         
         # Set up the plot
-        self.plot.setLabel('left', 'Number of Sessions')
-        self.plot.setLabel('bottom', 'BPM Range')
-        self.plot.setTitle('Distribution of Average BPM Across Sessions')
+        PlotStyleHelper.configure_plot_widget(
+            self.plot,
+            title='Distribution of Average BPM Across Sessions',
+            x_label="BPM Range",
+            x_units="", 
+            y_label="Number of Sessions",
+            y_units="",
+            grid=True, 
+            mouse_enabled=False,
+            menu_enabled=False   
+        )
         
         # Set x-axis ticks and labels
         x_ticks = [(i, label) for i, label in enumerate(x_labels)]

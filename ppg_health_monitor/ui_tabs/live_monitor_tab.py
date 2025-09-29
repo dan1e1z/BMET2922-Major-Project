@@ -6,7 +6,11 @@ import neurokit2 as nk
 from scipy import signal
 from collections import deque
 
-class LiveMonitorTab(QtWidgets.QWidget):
+from ppg_health_monitor.utils.plot_navigation_mixin import PlotNavigationMixin
+from ppg_health_monitor.utils.plot_style_helper import PlotStyleHelper
+from ppg_health_monitor.utils.signal_processing_utils import SignalProcessingUtils
+
+class LiveMonitorTab(QtWidgets.QWidget, PlotNavigationMixin):
     """
     A PyQt5 widget for real-time physiological monitoring.
 
@@ -24,60 +28,54 @@ class LiveMonitorTab(QtWidgets.QWidget):
             system_log: A logging object for displaying system messages.
         """
         super().__init__()
-
-        # Core system references
+        
         self.system_log = system_log
-
+        
         # Session management
         self.current_user = None
         self.session_start_time = None
         self.session_raw_ppg = []
         self.session_bpm = []
-
-        # Signal processing - Fixed 60-second buffer for efficiency
-        self.sampling_rate = 50
-        self.buffer_duration = 60  # seconds
-        self.buffer_size = self.sampling_rate * self.buffer_duration  # 3000 samples
         
-        # Use deque for O(1) append/popleft operations
+        # Signal processing
+        self.sampling_rate = 50
+        self.buffer_duration = 60
+        self.buffer_size = self.sampling_rate * self.buffer_duration
+        
         self.ppg_buffer = deque(maxlen=self.buffer_size)
         self.ppg_times = deque(maxlen=self.buffer_size)
         
-        # Visualization data - separate from processing buffer
+        # Visualization data
         self.visual_ppg_data = []
         self.visual_bpm_data = [0]
         self.time_ppg_data = []
         self.time_bpm_data = [0]
         
-        # Physiological metrics - Initialize with starting values for live monitoring
-        self.ibi_data = deque([0], maxlen=1000)  # Start with 0 at time=0
+        # Physiological metrics
+        self.ibi_data = deque([0], maxlen=1000)
         self.ibi_times = deque([0], maxlen=1000)
-        self.rr_data = deque([0], maxlen=300)    # Start with 0 at time=0
+        self.rr_data = deque([0], maxlen=300)
         self.rr_times = deque([0], maxlen=300)
         self.peak_times = deque(maxlen=500)
         self.peak_amplitudes = deque(maxlen=500)
         self.hrv_metrics = {}
         
-        # Current values for live updating
         self.current_ibi = 0
         self.current_rr = 0
-
-        # Timing and state
+        
+        # Timing
         self.last_packet_time = 0
         self.last_hrv_update = 0
         self.last_peak_time = -1
         self.last_ibi_time = -1
         
-        # UI state - only essential settings
-        self.plot_window_seconds = 10
-        self.is_auto_scrolling = True
+        # UI state
         self.current_bpm = 0
         self.avg_bpm = 0
         self.bpm_low = 40
         self.bpm_high = 200
         self.alarm_active = False
-
-        # Initialize UI
+        
         self.setup_ui()
 
     def setup_ui(self):
@@ -93,22 +91,18 @@ class LiveMonitorTab(QtWidgets.QWidget):
         plots_layout = QtWidgets.QVBoxLayout()
 
         # --- BPM Plot ---
-        # Create the plot widget and the main heart rate curve
         self.bpm_plot = pg.PlotWidget()
-        self.bpm_plot.setTitle("Heart Rate (BPM)")
-        self.bpm_plot.setLabel('left', 'BPM')
-        self.bpm_plot.setLabel('bottom', 'Time', units='s')
-        self.bpm_plot.showGrid(True, True)
-        self.bpm_plot.setMouseEnabled(x=False, y=False)
-        self.bpm_plot.setMenuEnabled(False)
-
-        # Add legend
-        self.bpm_legend = self.bpm_plot.addLegend(offset=(-1, -1))
-
-        self.bpm_curve = self.bpm_plot.plot(
-            pen=pg.mkPen('r', width=2),
-            name='Heart Rate'
+        PlotStyleHelper.configure_plot_widget(
+            self.bpm_plot,
+            title="Heart Rate (BPM)",
+            y_label="BPM",
+            grid=True,
+            mouse_enabled=False,
+            menu_enabled=False
         )
+
+        self.bpm_legend = PlotStyleHelper.create_legend(self.bpm_plot)
+        self.bpm_curve = self.bpm_plot.plot(pen=pg.mkPen('r', width=2), name='Heart Rate')
 
         # Average line
         self.avg_bpm_line = pg.InfiniteLine(
@@ -120,31 +114,26 @@ class LiveMonitorTab(QtWidgets.QWidget):
         # Add custom legend entry for the average line
         sample_item = pg.PlotDataItem(pen=pg.mkPen("#FFA726", width=2, style=QtCore.Qt.DashLine))
         self.bpm_legend.addItem(sample_item, "Average BPM")
-
-        # Add the plot to layout
         plots_layout.addWidget(self.bpm_plot, stretch=2)
+
         # --- Raw PPG Plot ---
         self.raw_ppg_plot = pg.PlotWidget()
-        self.raw_ppg_plot.setTitle("Raw PPG Signal")
-        self.raw_ppg_plot.setLabel('left', 'PPG Amplitude')
-        self.raw_ppg_plot.setLabel('bottom', 'Time', units='s')
-        self.raw_ppg_plot.showGrid(True, True)
-        self.raw_ppg_plot.setMouseEnabled(x=False, y=False)
-        self.raw_ppg_plot.setMenuEnabled(False)
-        
-        # Add legend positioned alongside the title (top-left, higher up)
-        self.ppg_legend = self.raw_ppg_plot.addLegend(offset=(-1, -1))
-        
-        self.raw_ppg_curve = self.raw_ppg_plot.plot(
-            pen=pg.mkPen('b', width=2),
-            name='PPG Signal'
+        PlotStyleHelper.configure_plot_widget(
+            self.raw_ppg_plot,
+            title="Raw PPG Signal",
+            y_label="PPG Amplitude",
+            grid=True,
+            mouse_enabled=False,
+            menu_enabled=False
         )
         
-        # Add scatter plot item to mark detected R-peaks on the PPG signal.
+        self.ppg_legend = PlotStyleHelper.create_legend(self.raw_ppg_plot)
+        self.raw_ppg_curve = self.raw_ppg_plot.plot(pen=pg.mkPen('b', width=2), name='PPG Signal')
+        
         self.peak_scatter = pg.ScatterPlotItem(
-            pen=pg.mkPen(color='red'), 
-            brush=pg.mkBrush(color='red'), 
-            size=8, 
+            pen=pg.mkPen(color='red'),
+            brush=pg.mkBrush(color='red'),
+            size=8,
             symbol='o',
             name='Detected Peaks'
         )
@@ -153,15 +142,18 @@ class LiveMonitorTab(QtWidgets.QWidget):
 
         # --- IBI Tachogram Plot (Initially Hidden) ---
         self.ibi_plot = pg.PlotWidget()
-        self.ibi_plot.setTitle("Inter-Beat Intervals (IBI)")
-        self.ibi_plot.setLabel('left', 'IBI', units='ms') 
-        self.ibi_plot.setLabel('bottom', 'Time', units='s')
-        self.ibi_plot.showGrid(True, True)
-        self.ibi_plot.setMouseEnabled(x=False, y=False)
-        self.ibi_plot.setMenuEnabled(False)
+        PlotStyleHelper.configure_plot_widget(
+            self.ibi_plot,
+            title="Inter-Beat Intervals (IBI)",
+            y_label="IBI",
+            y_units="ms",
+            grid=True,
+            mouse_enabled=False,
+            menu_enabled=False
+        )
         
         # Add legend positioned alongside the title (top-left, higher up)
-        self.ibi_legend = self.ibi_plot.addLegend(offset=(-1, -1))
+        self.ibi_legend = PlotStyleHelper.create_legend(self.ibi_plot)
         
         self.ibi_curve = self.ibi_plot.plot(
             pen=pg.mkPen(QtGui.QColor("#6A1B9A"), width=2), 
@@ -175,81 +167,71 @@ class LiveMonitorTab(QtWidgets.QWidget):
 
         # --- Respiratory Rate Plot (Initially Hidden) ---
         self.rr_plot = pg.PlotWidget()
-        self.rr_plot.setTitle("Respiratory Rate")
-        self.rr_plot.setLabel('left', 'Breaths/min')
-        self.rr_plot.setLabel('bottom', 'Time', units='s')
-        self.rr_plot.showGrid(True, True)
-        self.rr_plot.setMouseEnabled(x=False, y=False)
-        self.rr_plot.setMenuEnabled(False)
+
+        PlotStyleHelper.configure_plot_widget(
+            self.rr_plot,
+            title="Respiratory Rate",
+            y_label="Breaths/min",
+            grid=True,
+            mouse_enabled=False,
+            menu_enabled=False
+        )
         
-        # Add legend positioned alongside the title (top-left, higher up)
-        self.rr_legend = self.rr_plot.addLegend(offset=(-1, -1))
-        
+        self.rr_legend = PlotStyleHelper.create_legend(self.rr_plot)
         self.rr_curve = self.rr_plot.plot(
-            pen=pg.mkPen(QtGui.QColor("#00695C"), width=2), 
+            pen=pg.mkPen(QtGui.QColor("#00695C"), width=2),
             name='Respiratory Rate'
         )
         self.rr_plot.setVisible(False)
+
         plots_layout.addWidget(self.rr_plot, stretch=2)
 
-        # --- Plot Controls (Slider, Checkbox, and Time Window Selector) ---
-        plot_controls_layout = QtWidgets.QHBoxLayout()
+        # === PLOT NAVIGATION ===
+        self.setup_plot_navigation(plots_layout, default_window_seconds=10)
+        
+        # === CONTROLS PANEL ===
+        controls_widget = self._create_controls_panel()
+        
+        # Assemble layout
+        content_layout = QtWidgets.QHBoxLayout()
+        content_layout.addLayout(plots_layout, 3)
+        content_layout.addWidget(controls_widget, 1)
+        
+        main_layout.addLayout(content_layout)
+        main_layout.addWidget(self.system_log)
+        self.setLayout(main_layout)
+        
+        # Timers
+        self.alarm_timer = QtCore.QTimer()
+        self.alarm_timer.timeout.connect(self.blink_alarm)
+        self.alarm_visible = True
+        
+        # Initialize legend visibility
+        self.toggle_legends(QtCore.Qt.Checked)
 
-        # Checkbox to enable or disable auto-scrolling.
-        self.auto_scroll_checkbox = QtWidgets.QCheckBox("Auto-Scroll")
-        self.auto_scroll_checkbox.setChecked(self.is_auto_scrolling)
-        self.auto_scroll_checkbox.stateChanged.connect(self.toggle_auto_scroll)
-        plot_controls_layout.addWidget(self.auto_scroll_checkbox)
-
-        # Slider for manually scrolling through the plot history.
-        self.plot_slider = QtWidgets.QSlider(QtCore.Qt.Horizontal)
-        self.plot_slider.setRange(0, 0)
-        self.plot_slider.valueChanged.connect(self.scroll_plots)
-        self.plot_slider.sliderPressed.connect(self.disable_auto_scroll)
-        plot_controls_layout.addWidget(self.plot_slider)
-
-        # Dropdown to select the visible time window duration.
-        window_label = QtWidgets.QLabel("Time Window:")
-        window_label.setStyleSheet("QLabel { font-weight: bold; }")
-        self.window_selector = QtWidgets.QComboBox()
-        self.window_selector.addItems(["5s", "10s", "30s", "60s"])
-        self.window_selector.setCurrentText("10s")
-        self.window_selector.currentTextChanged.connect(self.update_time_window)
-        plot_controls_layout.addWidget(window_label)
-        plot_controls_layout.addWidget(self.window_selector)
-        plots_layout.addLayout(plot_controls_layout)
-
-        # Label to display current session information.
-        self.session_info = QtWidgets.QLabel("Not logged in")
-        self.session_info.setAlignment(QtCore.Qt.AlignRight)
-        plots_layout.addWidget(self.session_info)
-
-        # === CONTROLS & INFO PANEL ===
+    def _create_controls_panel(self):
         controls_widget = QtWidgets.QWidget()
         controls_layout = QtWidgets.QVBoxLayout()
         controls_layout.setSpacing(15)
 
-        # --- Heart Rate Panel ---
+        # BPM display
         bpm_group = QtWidgets.QGroupBox("Heart Rate")
         bpm_layout = QtWidgets.QVBoxLayout(bpm_group)
-
-        # Current BPM display
+        
         self.bpm_display = QtWidgets.QLabel("-- BPM")
         self.bpm_display.setAlignment(QtCore.Qt.AlignCenter)
         self.bpm_display.setStyleSheet("font-size: 28px; font-weight: bold; color: #2E7D32;")
         bpm_layout.addWidget(self.bpm_display)
-
-        # Average BPM display
+        
         self.avg_bpm_display = QtWidgets.QLabel("Avg: -- BPM")
         self.avg_bpm_display.setAlignment(QtCore.Qt.AlignCenter)
         self.avg_bpm_display.setStyleSheet("font-size: 18px; color: #2E7D32;")
         bpm_layout.addWidget(self.avg_bpm_display)
-
-        # Status text
+        
         self.bpm_status = QtWidgets.QLabel("Monitoring...")
         self.bpm_status.setAlignment(QtCore.Qt.AlignCenter)
         bpm_layout.addWidget(self.bpm_status)
-
+        
         controls_layout.addWidget(bpm_group)
 
         # --- HRV Metrics Panel ---
@@ -284,7 +266,7 @@ class LiveMonitorTab(QtWidgets.QWidget):
         display_layout.addWidget(self.rr_toggle)
         
         self.legend_toggle = QtWidgets.QCheckBox("Show Plot Legends")
-        self.legend_toggle.setChecked(True)  # Default to showing legends
+        self.legend_toggle.setChecked(True)
         self.legend_toggle.stateChanged.connect(self.toggle_legends)
         display_layout.addWidget(self.legend_toggle)
         
@@ -308,7 +290,7 @@ class LiveMonitorTab(QtWidgets.QWidget):
         thresholds_layout.addWidget(self.high_label)
         thresholds_layout.addWidget(self.high_slider)
         controls_layout.addWidget(thresholds_group)
-        
+
         # --- Alarm Display Widget ---
         self.alarm_widget = QtWidgets.QLabel("")
         self.alarm_widget.setAlignment(QtCore.Qt.AlignCenter)
@@ -316,36 +298,10 @@ class LiveMonitorTab(QtWidgets.QWidget):
         self.alarm_widget.setVisible(False)
         controls_layout.addWidget(self.alarm_widget)
 
-        # --- Current Statistics Display ---
-        self.current_stats = QtWidgets.QLabel("")
-        self.current_stats.setAlignment(QtCore.Qt.AlignCenter)
-        self.current_stats.setWordWrap(True)
-        controls_layout.addWidget(self.current_stats)
-        
         controls_layout.addStretch()
         controls_widget.setLayout(controls_layout)
-
-        # --- Main Layout Assembly ---
-        content_layout = QtWidgets.QHBoxLayout()
-        content_layout.addLayout(plots_layout, 3)
-        content_layout.addWidget(controls_widget, 1)
-        
-        main_layout.addLayout(content_layout)
-        main_layout.addWidget(self.system_log)
-        self.setLayout(main_layout)
-
-        # --- Timers ---
-        self.alarm_timer = QtCore.QTimer()
-        self.alarm_timer.timeout.connect(self.blink_alarm)
-        self.alarm_visible = True
-
-        self.update_timer = QtCore.QTimer()
-        self.update_timer.timeout.connect(self.update_session_info)
-        self.update_timer.start(1000)
-        
-        # Initialize legends state
-        self.toggle_legends(QtCore.Qt.Checked)  # Show legends by default
-
+        return controls_widget
+    
     def new_data_received(self, packet):
         """
         Process new data packet, generate timestamps, and update plots.
@@ -396,30 +352,37 @@ class LiveMonitorTab(QtWidgets.QWidget):
         return alarm_msg 
 
     def process_ppg_signal(self):
-        """Process PPG signal to extract R-peaks, calculate IBI, HRV, and estimate RR."""
+        """Process PPG signal using shared utilities."""
         ppg_signal = np.array(self.ppg_buffer)
         ppg_times_array = np.array(self.ppg_times)
         
-        # Clean and find peaks using the more comprehensive method
-        ppg_cleaned = nk.ppg_clean(ppg_signal, sampling_rate=self.sampling_rate, method="elgendi")
-        _, info = nk.ppg_peaks(ppg_cleaned, sampling_rate=self.sampling_rate, method="elgendi")
+        # Use shared signal processing utilities
+        ppg_cleaned = SignalProcessingUtils.clean_ppg_signal(
+            ppg_signal,
+            sampling_rate=self.sampling_rate,
+            method="elgendi"
+        )
         
-        peak_indices = info.get("PPG_Peaks", [])
-        if len(peak_indices) == 0:
+        peaks, info = SignalProcessingUtils.detect_ppg_peaks(
+            ppg_cleaned,
+            sampling_rate=self.sampling_rate,
+            method="elgendi"
+        )
+        
+        if len(peaks) == 0:
             return
-            
-        peak_times = ppg_times_array[peak_indices]
-        peak_amplitudes = ppg_signal[peak_indices]
-
+        
+        peak_times = ppg_times_array[peaks]
+        peak_amplitudes = ppg_signal[peaks]
+        
         self._update_peaks(peak_times, peak_amplitudes)
         self._update_ibis(peak_times)
-
+        
         # Update HRV every 5 seconds
         if self.last_packet_time - self.last_hrv_update >= 5:
             self.calculate_hrv_metrics()
             self.last_hrv_update = self.last_packet_time
-
-        # Estimate respiratory rate
+        
         self.estimate_respiratory_rate(ppg_cleaned)
 
     def estimate_respiratory_rate(self, ppg_cleaned):
@@ -458,61 +421,39 @@ class LiveMonitorTab(QtWidgets.QWidget):
         self.rr_times.append(self.last_packet_time)
 
     def calculate_hrv_metrics(self):
-        """Calculate HRV metrics from IBI data."""
-        if len(self.ibi_data) < 10:  # Need minimum IBIs for meaningful calculation
+        """Calculate HRV using shared utilities."""
+        if len(self.ibi_data) < 10:
             return
-            
-        # Use available IBI data (deque automatically limits size)
+        
         rr_intervals = np.array(self.ibi_data)
         
-        # Calculate HRV metrics
-        rmssd = np.sqrt(np.mean(np.diff(rr_intervals)**2))
-        sdnn = np.std(rr_intervals)
-        mean_rr = np.mean(rr_intervals)
+        # Use shared HRV calculation
+        self.hrv_metrics = SignalProcessingUtils.calculate_hrv_time_domain(rr_intervals)
         
-        # Calculate pNN50
-        diff_rr = np.abs(np.diff(rr_intervals))
-        if len(diff_rr) > 0:
-            nn50 = np.sum(diff_rr > 50)
-            pnn50 = (nn50 / len(diff_rr)) * 100
-        else:
-            pnn50 = 0
+        if not self.hrv_metrics:
+            return
         
-        # Poincare plot parameters
-        sd1 = np.sqrt(0.5 * rmssd**2)
-        sd2 = max(np.sqrt(2 * sdnn**2 - 0.5 * rmssd**2), 0)
-        
-        # Store metrics
-        self.hrv_metrics = {
-            'RMSSD': rmssd,
-            'SDNN': sdnn,
-            'Mean_RR': mean_rr,
-            'pNN50': pnn50,
-            'SD1': sd1,
-            'SD2': sd2
-        }
-        
-        # Update display
+        # Display results
         hrv_text = "<br>".join([
             f"<span style='font-size:12px; font-weight:bold; color:#2E7D32;'>RMSSD:</span> "
-            f"<span style='font-size:12px; color:black;'>{rmssd:.1f} ms</span>",
-
+            f"<span style='font-size:12px; color:black;'>{self.hrv_metrics.get('rmssd', 0):.1f} ms</span>",
+            
             f"<span style='font-size:12px; font-weight:bold; color:#2E7D32;'>SDNN:</span> "
-            f"<span style='font-size:12px; color:black;'>{sdnn:.1f} ms</span>",
-
+            f"<span style='font-size:12px; color:black;'>{self.hrv_metrics.get('sdnn', 0):.1f} ms</span>",
+            
             f"<span style='font-size:12px; font-weight:bold; color:#2E7D32;'>pNN50:</span> "
-            f"<span style='font-size:12px; color:black;'>{pnn50:.1f}%</span>",
-
+            f"<span style='font-size:12px; color:black;'>{self.hrv_metrics.get('pnn50', 0):.1f}%</span>",
+            
             f"<span style='font-size:12px; font-weight:bold; color:#2E7D32;'>Mean RR:</span> "
-            f"<span style='font-size:12px; color:black;'>{mean_rr:.1f} ms</span>",
-
+            f"<span style='font-size:12px; color:black;'>{self.hrv_metrics.get('mean_rr', 0):.1f} ms</span>",
+            
             f"<span style='font-size:12px; font-weight:bold; color:#2E7D32;'>SD1:</span> "
-            f"<span style='font-size:12px; color:black;'>{sd1:.1f} ms</span>",
-
+            f"<span style='font-size:12px; color:black;'>{self.hrv_metrics.get('sd1', 0):.1f} ms</span>",
+            
             f"<span style='font-size:12px; font-weight:bold; color:#2E7D32;'>SD2:</span> "
-            f"<span style='font-size:12px; color:black;'>{sd2:.1f} ms</span>"
+            f"<span style='font-size:12px; color:black;'>{self.hrv_metrics.get('sd2', 0):.1f} ms</span>"
         ])
-
+        
         self.hrv_display.setText(hrv_text)
 
     def _update_peaks(self, peak_times, peak_amplitudes):
@@ -542,60 +483,48 @@ class LiveMonitorTab(QtWidgets.QWidget):
                 self.last_ibi_time = ibi_time
 
     def update_plots(self):
-        """Update plot data and view window."""
-        # Only update if we have data
+        """Update plots - now uses mixin methods."""
+        # Update plot data
         if self.bpm_plot.isVisible() and self.time_bpm_data and self.visual_bpm_data:
             self.bpm_curve.setData(self.time_bpm_data, self.visual_bpm_data)
         
         if self.raw_ppg_plot.isVisible() and self.time_ppg_data and self.visual_ppg_data:
             self.raw_ppg_curve.setData(self.time_ppg_data, self.visual_ppg_data)
         
-        # Update IBI plot if visible
         if self.ibi_plot.isVisible() and self.ibi_data and self.ibi_times:
             self.ibi_curve.setData(list(self.ibi_times), list(self.ibi_data))
         
-        # Update RR plot if visible
         if self.rr_plot.isVisible() and self.rr_data and self.rr_times:
             self.rr_curve.setData(list(self.rr_times), list(self.rr_data))
-
-        # Update average BPM line and display
-        self.update_average_bpm_line()
         
+        self.update_average_bpm_line()
         self.update_plot_view()
         self.update_slider()
 
     def update_plot_view(self):
-        """Sets the visible range of the plots based on slider position or auto-scroll."""
-        max_time = self.time_ppg_data[-1] if self.time_ppg_data else 0
+        """Update plot view using mixin method."""
+        if not self.time_ppg_data:
+            return
         
-        if self.is_auto_scrolling:
-            start_time = max(0, max_time - self.plot_window_seconds)
-        else:
-            start_time = self.plot_slider.value() / 100.0
-            
-        end_time = start_time + self.plot_window_seconds
+        max_time = self.time_ppg_data[-1]
+        start_time, end_time = self.get_plot_view_range(max_time)
+        
         self.bpm_plot.setXRange(start_time, end_time, padding=0)
         self.raw_ppg_plot.setXRange(start_time, end_time, padding=0)
         
         if self.ibi_plot.isVisible():
             self.ibi_plot.setXRange(start_time, end_time, padding=0)
-            
+        
         if self.rr_plot.isVisible():
             self.rr_plot.setXRange(start_time, end_time, padding=0)
 
     def update_slider(self):
-        """Updates the range and position of the time-scroll slider IF auto-scrolling."""
-        if self.is_auto_scrolling:
-            max_time = self.time_ppg_data[-1] if self.time_ppg_data else 0
-            scrollable_duration = max_time - self.plot_window_seconds
-
-            if scrollable_duration > 0:
-                self.plot_slider.setMaximum(int(scrollable_duration * 100))
-                self.plot_slider.blockSignals(True)
-                self.plot_slider.setValue(self.plot_slider.maximum())
-                self.plot_slider.blockSignals(False)
-            else:
-                self.plot_slider.setMaximum(0)
+        """Update slider using mixin method."""
+        if not self.time_ppg_data:
+            return
+        
+        max_time = self.time_ppg_data[-1]
+        self.update_plot_slider(max_time)
 
     def scroll_plots(self, value):
         """Update the plot view when the slider is moved manually."""
@@ -617,20 +546,6 @@ class LiveMonitorTab(QtWidgets.QWidget):
         """Start a new monitoring session for the specified user."""
         self.current_user = username
         self.session_start_time = datetime.now()
-        self.update_session_info()
-
-    def update_session_info(self):
-        """Update the session information display."""
-        if self.current_user and self.session_start_time:
-            duration = datetime.now() - self.session_start_time
-            minutes = duration.total_seconds() / 60
-            self.session_info.setText(f"Recording: {minutes:.1f} min | Samples: {len(self.session_bpm)}")
-            
-            if self.session_bpm:
-                self.current_stats.setText("")
-        else:
-            self.session_info.setText("Not recording")
-            self.current_stats.setText("Please log in to start recording session data")
 
     def update_thresholds(self):
         """Update BPM alarm thresholds."""
@@ -647,37 +562,28 @@ class LiveMonitorTab(QtWidgets.QWidget):
 
     def check_bpm_alarm(self):
         """Check BPM against thresholds and trigger alarms if needed."""
-        prev_state = self.alarm_active
         msg = None
 
         if self.current_bpm < self.bpm_low:
             self.alarm_active = True
             self.alarm_widget.setText(f"WARNING: PULSE LOW: {self.current_bpm:.1f} BPM")
-            if not prev_state:
-                self.alarm_timer.start(1000)
-                msg = "Pulse Low"
+            self.alarm_timer.start(1000)
+            msg = "Pulse Low"
                 
         elif self.current_bpm > self.bpm_high:
             self.alarm_active = True
             self.alarm_widget.setText(f"WARNING: PULSE HIGH: {self.current_bpm:.1f} BPM")
-            if not prev_state:
-                self.alarm_timer.start(1000)
-                msg = "Pulse High"
+            self.alarm_timer.start(1000)
+            msg = "Pulse High"
                 
         else:
-            if prev_state:
                 self.alarm_active = False
                 self.alarm_widget.setVisible(False)
                 self.alarm_timer.stop()
                 msg = "Pulse Normal"
                 
         return msg
-    
-    def update_time_window(self, window_text):
-        """Update the time window for plot display."""
-        window_map = {"5s": 5, "10s": 10, "30s": 30, "60s": 60}
-        self.plot_window_seconds = window_map.get(window_text, 10)
-        self.update_plot_view()
+
 
     def update_average_bpm_line(self):
         """Update the average BPM reference line."""
@@ -701,21 +607,10 @@ class LiveMonitorTab(QtWidgets.QWidget):
         self.rr_plot.setVisible(show_rr_plot)
     
     def toggle_legends(self, state):
-        """Toggle visibility of plot legends."""
+        """Toggle legends using PlotStyleHelper."""
         show_legends = (state == QtCore.Qt.Checked)
         
-        # Toggle BPM plot legend
-        if hasattr(self, 'bpm_legend'):
-            self.bpm_legend.setVisible(show_legends)
-        
-        # Toggle PPG plot legend
-        if hasattr(self, 'ppg_legend'):
-            self.ppg_legend.setVisible(show_legends)
-        
-        # Toggle IBI plot legend
-        if hasattr(self, 'ibi_legend'):
-            self.ibi_legend.setVisible(show_legends)
-        
-        # Toggle RR plot legend
-        if hasattr(self, 'rr_legend'):
-            self.rr_legend.setVisible(show_legends)
+        PlotStyleHelper.toggle_legend_visibility(self.bpm_legend, show_legends)
+        PlotStyleHelper.toggle_legend_visibility(self.ppg_legend, show_legends)
+        PlotStyleHelper.toggle_legend_visibility(self.ibi_legend, show_legends)
+        PlotStyleHelper.toggle_legend_visibility(self.rr_legend, show_legends)
