@@ -755,7 +755,7 @@ class ResearchTab(QtWidgets.QWidget):
         # Display results
         results_text = "<br>".join([
                 # --- TIME DOMAIN ---
-                f"<span style='font-size:14px; color:#37474F;'>TIME DOMAIN METRICS</span>",
+                f"<span style='font-size:14px; color:#37474F; font-weight:bold;'>TIME DOMAIN METRICS</span>",
                 (f"<span style='font-size:12px; color:#2E7D32;'>Mean R-R: </span>"
                 f"<span style='font-size:12px; color:#263238;'>{rr_mean:.1f} ms</span>"),
                 (f"<span style='font-size:12px; color:#2E7D32;'>SDNN: </span>"
@@ -769,7 +769,7 @@ class ResearchTab(QtWidgets.QWidget):
                 "", 
 
                 # --- FREQUENCY DOMAIN ---
-                f"<span style='font-size:14px; color:#37474F;'>FREQUENCY DOMAIN</span>",
+                f"<span style='font-size:14px; color:#37474F; font-weight:bold;'>FREQUENCY DOMAIN</span>",
                 (f"<span style='font-size:12px; color:#2E7D32;'>VLF Power: </span>"
                 f"<span style='font-size:12px; color:#263238;'>{vlf_power:.3f} ms²</span>"),
                 (f"<span style='font-size:12px; color:#2E7D32;'>LF Power: </span>"
@@ -781,7 +781,7 @@ class ResearchTab(QtWidgets.QWidget):
                 "",  
 
                 # --- NONLINEAR METRICS ---
-                f"<span style='font-size:14px; color:#37474F;'>NONLINEAR METRICS</span>",
+                f"<span style='font-size:14px; color:#37474F; font-weight:bold;'>NONLINEAR METRICS</span>",
                 (f"<span style='font-size:12px; color:#2E7D32;'>SD1: </span>"
                 f"<span style='font-size:12px; color:#263238;'>{sd1:.2f} ms</span>"),
                 (f"<span style='font-size:12px; color:#2E7D32;'>SD2: </span>"
@@ -863,30 +863,30 @@ class ResearchTab(QtWidgets.QWidget):
         
         # Display results
         results_text = "<br>".join([
-            f"<span style='font-size:14px;  color:#37474F;'>PPG SIGNAL QUALITY ASSESSMENT</span>",
+            f"<span style='font-size:14px; color:#37474F; font-weight:bold;'>PPG SIGNAL QUALITY ASSESSMENT</span>",
             f"<span style='font-size:12px; color:#2E7D32;'>Overall Quality:</span> "
             f"<span style='font-size:12px; color:#263238;'>{mean_quality:.3f} ({quality_rating})</span>",
             "",
-            f"<span style='font-size:12px;  color:#455A64;'>NEUROKIT TEMPLATE MATCHING:</span>",
-            f"<span style='font-size:12px;  color:#2E7D32;'>Mean Quality Score:</span>"
+            f"<span style='font-size:12px; color:#455A64; font-weight:bold;'>NEUROKIT TEMPLATE MATCHING:</span>",
+            f"<span style='font-size:12px; color:#2E7D32;'>Mean Quality Score:</span>"
             f"<span style='font-size:12px; color:#263238;'>{mean_quality:.3f}</span>",
-            f"<span style='font-size:12px;  color:#2E7D32;'>Quality Range:</span> "
+            f"<span style='font-size:12px; color:#2E7D32;'>Quality Range:</span> "
             f"<span style='font-size:12px; color:#263238;'>{min_quality:.3f} - {max_quality:.3f}</span>",
-            f"<span style='font-size:12px;  color:#2E7D32;'>Standard Deviation:</span> "
+            f"<span style='font-size:12px; color:#2E7D32;'>Standard Deviation:</span> "
             f"<span style='font-size:12px; color:#263238;'>{std_quality:.3f}</span>",
             "",
-            f"<span style='font-size:12px; color:#455A64;'>QUALITY DISTRIBUTION:</span>",
-            f"<span style='font-size:12px; color:#2E7D32;'>High Quality (>0.7):</span>"
+            f"<span style='font-size:12px; color:#455A64; font-weight:bold;'>QUALITY DISTRIBUTION:</span>",
+            f"<span style='font-size:12px; color:#2E7D32;'>High Quality (>0.7):</span> "
             f"<span style='font-size:12px; color:#263238;'>{high_quality_pct:.1f}%</span>",
-            f"<span style='font-size:12px; color:#2E7D32;'>Poor Quality (&lt;0.3):</span>"
+            f"<span style='font-size:12px; color:#2E7D32;'>Poor Quality (&lt;0.3):</span> "
             f"<span style='font-size:12px; color:#263238;'>{poor_quality_pct:.1f}%</span>",
             "",
-            f"<span style='font-size:12px; color:#455A64;'>ADDITIONAL METRICS:</span>",
-            f"<span style='font-size:12px;  color:#2E7D32;'>SNR:</span>"
+            f"<span style='font-size:12px; color:#455A64; font-weight:bold;'>ADDITIONAL METRICS:</span>",
+            f"<span style='font-size:12px;  color:#2E7D32;'>SNR:</span> "
             f"<span style='font-size:12px; color:#263238;'>{snr_db:.1f} dB</span>",
             f"<span style='font-size:12px;  color:#2E7D32;'>Invalid Data:</span> "
             f"<span style='font-size:12px; color:#263238;'>{invalid_count/samples*100:.1f}%</span>",
-            f"<span style='font-size:12px;  color:#2E7D32;'>Duration:</span>"
+            f"<span style='font-size:12px;  color:#2E7D32;'>Duration:</span> "
             f"<span style='font-size:12px; color:#263238;'>{duration:.1f}s</span>",
             f"<span style='font-size:12px;  color:#2E7D32;'>Samples:</span> "
             f"<span style='font-size:12px; color:#263238;'>{samples:,}</span>"
