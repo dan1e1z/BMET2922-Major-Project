@@ -72,6 +72,7 @@ class LiveMonitorTab(QtWidgets.QWidget):
         self.plot_window_seconds = 10
         self.is_auto_scrolling = True
         self.current_bpm = 0
+        self.avg_bpm = 0
         self.bpm_low = 40
         self.bpm_high = 200
         self.alarm_active = False
@@ -231,13 +232,24 @@ class LiveMonitorTab(QtWidgets.QWidget):
         # --- Heart Rate Panel ---
         bpm_group = QtWidgets.QGroupBox("Heart Rate")
         bpm_layout = QtWidgets.QVBoxLayout(bpm_group)
+
+        # Current BPM display
         self.bpm_display = QtWidgets.QLabel("-- BPM")
         self.bpm_display.setAlignment(QtCore.Qt.AlignCenter)
         self.bpm_display.setStyleSheet("font-size: 28px; font-weight: bold; color: #2E7D32;")
+        bpm_layout.addWidget(self.bpm_display)
+
+        # Average BPM display
+        self.avg_bpm_display = QtWidgets.QLabel("Avg: -- BPM")
+        self.avg_bpm_display.setAlignment(QtCore.Qt.AlignCenter)
+        self.avg_bpm_display.setStyleSheet("font-size: 18px; color: #2E7D32;")
+        bpm_layout.addWidget(self.avg_bpm_display)
+
+        # Status text
         self.bpm_status = QtWidgets.QLabel("Monitoring...")
         self.bpm_status.setAlignment(QtCore.Qt.AlignCenter)
-        bpm_layout.addWidget(self.bpm_display)
         bpm_layout.addWidget(self.bpm_status)
+
         controls_layout.addWidget(bpm_group)
 
         # --- HRV Metrics Panel ---
@@ -615,10 +627,7 @@ class LiveMonitorTab(QtWidgets.QWidget):
             self.session_info.setText(f"Recording: {minutes:.1f} min | Samples: {len(self.session_bpm)}")
             
             if self.session_bpm:
-                current_bpm = self.session_bpm[-1] if self.session_bpm else 0
-                avg_bpm = np.mean(self.session_bpm)
-                stats_text = f"Current: {current_bpm:.1f} BPM\nAvg: {avg_bpm:.1f}"
-                self.current_stats.setText(stats_text)
+                self.current_stats.setText("")
         else:
             self.session_info.setText("Not recording")
             self.current_stats.setText("Please log in to start recording session data")
@@ -677,6 +686,7 @@ class LiveMonitorTab(QtWidgets.QWidget):
             valid_bpm = [bpm for bpm in self.visual_bpm_data if bpm > 0]
             if valid_bpm:
                 avg_bpm = np.mean(valid_bpm)
+                self.avg_bpm_display.setText(f"Avg: {avg_bpm:.1f} BPM")
                 self.avg_bpm_line.setValue(avg_bpm)
                 self.avg_bpm_line.setVisible(True)
     
