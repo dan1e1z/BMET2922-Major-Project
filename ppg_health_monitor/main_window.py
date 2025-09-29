@@ -2,9 +2,13 @@
 from PyQt5 import QtWidgets, QtCore, QtGui
 from datetime import datetime
 import numpy as np
-from ui_components import UserManager, SystemLog, BluetoothConnectionStatus
-from ui_tabs import AccountTab, LiveMonitorTab, HistoryTab, ResearchTab
-from bluetooth_monitor import BluetoothMonitor
+# from ui_components import UserManager, SystemLog, BluetoothConnectionStatus
+# from ui_tabs import AccountTab, LiveMonitorTab, HistoryTab, ResearchTab
+# from bluetooth_monitor import BluetoothMonitor
+from ppg_health_monitor.ui_components import UserManager, SystemLog, BluetoothConnectionStatus
+from ppg_health_monitor.ui_tabs import AccountTab, LiveMonitorTab, HistoryTab, ResearchTab
+from ppg_health_monitor.bluetooth_monitor import BluetoothMonitor
+
 
 class MainWindow(QtWidgets.QMainWindow):
     """
@@ -215,20 +219,21 @@ class MainWindow(QtWidgets.QMainWindow):
         """
         Overrides the close event to ask for confirmation before closing.
         """
-        reply = QtWidgets.QMessageBox.question(self, 'Confirm Close',
-            "Do you want to save your session and quit?",
-            QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No | QtWidgets.QMessageBox.Cancel)
+        event.accept()
+        # reply = QtWidgets.QMessageBox.question(self, 'Confirm Close',
+        #     "Do you want to save your session and quit?",
+        #     QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No | QtWidgets.QMessageBox.Cancel)
 
-        if reply == QtWidgets.QMessageBox.Yes:
-            print("Saving session and closing...")
-            self.close_window() 
-            event.accept()
-        elif reply == QtWidgets.QMessageBox.No:
-            print("Closing without saving...")
-            event.accept()
-        else:
-            print("Close operation canceled.")
-            event.ignore()
+        # if reply == QtWidgets.QMessageBox.Yes:
+        #     print("Saving session and closing...")
+        #     self.close_window() 
+        #     event.accept()
+        # elif reply == QtWidgets.QMessageBox.No:
+        #     print("Closing without saving...")
+        #     event.accept()
+        # else:
+        #     print("Close operation canceled.")
+        #     event.ignore()
 
 
     def handle_new_packet(self, packet):
@@ -245,7 +250,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
         if self.current_user:
             bpm = packet.get('bpm', 0)
-            current_samples = len(self.live_monitor_tab.session_bpm)
+            current_samples = len(self.live_monitor_tab.session_bpm) * 50
             duration = (datetime.now() - self.session_start_time).total_seconds() / 60
             self.status_bar.setText(f"Recording for {self.current_user} | Current BPM: {bpm:.1f} | Duration: {duration:.1f}min | Samples: {current_samples}")
 
@@ -299,4 +304,3 @@ class MainWindow(QtWidgets.QMainWindow):
         )
         print(f"Session saved for {self.current_user}: {duration:.1f} min, {len(session_bpm)} samples, "
               f"avg BPM: {avg_bpm:.1f}, thresholds {self.live_monitor_tab.bpm_low}-{self.live_monitor_tab.bpm_high}")
-        

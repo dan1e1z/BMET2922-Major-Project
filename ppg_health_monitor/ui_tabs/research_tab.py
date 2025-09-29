@@ -7,7 +7,12 @@ import pandas as pd
 import os
 from datetime import datetime
 
-class ResearchTab(QtWidgets.QWidget):
+from ppg_health_monitor.utils.plot_style_helper import PlotStyleHelper
+from ppg_health_monitor.utils.plot_navigation_mixin import PlotNavigationMixin
+from ppg_health_monitor.utils.data_validation_utils import DataValidationUtils
+from ppg_health_monitor.utils.signal_processing_utils import SignalProcessingUtils
+
+class ResearchTab(QtWidgets.QWidget, PlotNavigationMixin):
     """Advanced research tab for PPG signal analysis with comprehensive filtering and HRV analysis."""
     
     def __init__(self):
@@ -31,8 +36,8 @@ class ResearchTab(QtWidgets.QWidget):
         self.signal_quality_metrics = {}
         
         # Display settings
-        self.plot_window_seconds = 10
-        self.is_jump_to_end_enabled = True
+        # self.plot_window_seconds = 10
+        # self.is_jump_to_end_enabled = True
         
         self.setup_ui()
 
@@ -91,22 +96,35 @@ class ResearchTab(QtWidgets.QWidget):
         
         return widget
 
+
     def create_time_domain_tab(self):
         """Create time domain plotting tab."""
         time_tab = QtWidgets.QWidget()
         time_layout = QtWidgets.QVBoxLayout(time_tab)
         
         # Original signal plot
-        self.original_plot = pg.PlotWidget(title="Original Raw PPG Signal")
-        self.original_plot.setLabel('left', 'Amplitude (ADC units)')
-        self.original_plot.setLabel('bottom', 'Time (s)')
+        self.original_plot = pg.PlotWidget()
+        PlotStyleHelper.configure_plot_widget(
+            self.original_plot, 
+            title="Original Raw PPG Signal", 
+            x_label="Time", 
+            x_units="s", 
+            y_label="Amplitude", 
+            y_units="ADC units"
+        )
         self.original_curve = self.original_plot.plot(pen=pg.mkPen('b', width=1))
         time_layout.addWidget(self.original_plot)
 
         # Filtered signal with peaks
-        self.filtered_plot = pg.PlotWidget(title="Filtered PPG Signal & Peak Detection")
-        self.filtered_plot.setLabel('left', 'Amplitude (normalized)')
-        self.filtered_plot.setLabel('bottom', 'Time (s)')
+        self.filtered_plot = pg.PlotWidget()
+        PlotStyleHelper.configure_plot_widget(
+            self.filtered_plot, 
+            title="Filtered PPG Signal & Peak Detection", 
+            x_label="Time", 
+            x_units="s", 
+            y_label="Amplitude", 
+            y_units="normalized"
+        )
         self.filtered_curve = self.filtered_plot.plot(pen=pg.mkPen('g', width=1.5))
         
         self.peak_scatter = pg.ScatterPlotItem(
@@ -124,39 +142,31 @@ class ResearchTab(QtWidgets.QWidget):
         hrv_tab = QtWidgets.QWidget()
         hrv_layout = QtWidgets.QVBoxLayout(hrv_tab)
         
-        self.hrv_plot = pg.PlotWidget(title="R-R Interval Time Series (Tachogram)")
-        self.hrv_plot.setLabel('left', 'R-R Interval (ms)')
-        self.hrv_plot.setLabel('bottom', 'Beat Number')
+        self.hrv_plot = pg.PlotWidget()    
+        PlotStyleHelper.configure_plot_widget(
+            self.hrv_plot,
+            title="R-R Interval Time Series (Tachogram)",
+            x_label="Beat Number",
+            x_units="",
+            y_label="R-R Interval",
+            y_units="ms"
+        )
         self.hrv_curve = self.hrv_plot.plot(pen=pg.mkPen('c', width=2), symbol='o', symbolSize=4)
         hrv_layout.addWidget(self.hrv_plot)
         
         return hrv_tab
 
     def create_plot_controls(self):
-        """Create plot navigation controls."""
+        """Create plot navigation controls using PlotNavigationMixin."""
         controls_layout = QtWidgets.QHBoxLayout()
+        widget_refs = self.setup_plot_navigation(
+            parent_layout=controls_layout,
+            default_window_seconds=10
+        )
         
-        # Auto-scroll
-        self.jump_to_end_checkbox = QtWidgets.QCheckBox("Auto-scroll to end")
-        self.jump_to_end_checkbox.setChecked(self.is_jump_to_end_enabled)
-        self.jump_to_end_checkbox.stateChanged.connect(self.toggle_jump_to_end)
-        controls_layout.addWidget(self.jump_to_end_checkbox)
-        
-        # Time window
-        window_label = QtWidgets.QLabel("Time Window:")
-        self.window_selector = QtWidgets.QComboBox()
-        self.window_selector.addItems(["5s", "10s", "30s", "60s"])
-        self.window_selector.setCurrentText("10s")
-        self.window_selector.currentTextChanged.connect(self.update_time_window)
-        controls_layout.addWidget(window_label)
-        controls_layout.addWidget(self.window_selector)
-        
-        # Slider
-        self.plot_slider = QtWidgets.QSlider(QtCore.Qt.Horizontal)
-        self.plot_slider.setRange(0, 0)
-        self.plot_slider.valueChanged.connect(self.scroll_plots)
-        self.plot_slider.sliderPressed.connect(self.disable_jump_to_end)
-        controls_layout.addWidget(self.plot_slider)
+        self.jump_to_end_checkbox = widget_refs['checkbox']
+        self.plot_slider = widget_refs['slider']
+        self.window_selector = widget_refs['selector']
         
         return controls_layout
 
@@ -318,7 +328,7 @@ class ResearchTab(QtWidgets.QWidget):
         
         label = QtWidgets.QLabel(formatter(default))
         slider.valueChanged.connect(lambda v: label.setText(formatter(v)))
-        slider.label = label  # Store reference
+        slider.label = label
         
         return slider
 
@@ -508,26 +518,24 @@ class ResearchTab(QtWidgets.QWidget):
             self.metadata_label.setText(metadata_text)
 
     def calculate_data_quality(self):
-        """Calculate and display basic data quality metrics."""
+        """Calculate and display basic data quality metrics using DataValidationUtils."""
         if self.raw_ppg_signal.size == 0:
             return
             
-        samples = len(self.raw_ppg_signal)
+        metrics = DataValidationUtils.calculate_signal_quality_metrics(self.raw_ppg_signal)
+        
+        # Extract calculated values
+        samples = metrics.get('samples', 0)
+        invalid_count = metrics.get('invalid_count', 0)
+        invalid_percent = metrics.get('invalid_percent', 0)
+        snr_db = metrics.get('snr_db', 0)
+        
         duration = samples / self.sampling_rate
-        
-        # Missing data
-        invalid_count = np.sum(np.isnan(self.raw_ppg_signal)) + np.sum(np.isinf(self.raw_ppg_signal))
-        
-        # Simple SNR estimate
-        signal_power = np.var(self.raw_ppg_signal)
-        diff_signal = np.diff(self.raw_ppg_signal)
-        noise_power = np.var(diff_signal) / 2
-        snr_db = 10 * np.log10(signal_power / max(noise_power, 1e-10))
         
         # Update displays
         self.samples_label.setText(f"{samples:,}")
         self.duration_label.setText(f"{duration:.1f}s")
-        self.missing_label.setText(f"{invalid_count} ({invalid_count/samples*100:.1f}%)")
+        self.missing_label.setText(f"{invalid_count} ({invalid_percent:.1f}%)")
         self.snr_label.setText(f"{snr_db:.1f} dB")
 
     def update_control_visibility(self):
@@ -693,10 +701,11 @@ class ResearchTab(QtWidgets.QWidget):
                 f"{msg}. HRV analysis requires at least 10 peaks.")
             return
             
-        # Calculate R-R intervals in milliseconds
-        rr_intervals = np.diff(self.peaks) / self.sampling_rate * 1000
+        # Calculate R-R intervals in milliseconds using the utility (replaces manual np.diff/division)
+        rr_intervals = SignalProcessingUtils.calculate_rr_intervals(self.peaks, self.sampling_rate)
         
-        # Filter physiologically plausible intervals (300-2000ms)
+        # Filter physiologically plausible intervals (300-2000ms) - This filter logic is necessary before the utility
+        # We must replicate the utility's internal filtering here to ensure consistency with the display logic
         valid_mask = (rr_intervals > 300) & (rr_intervals < 2000)
         valid_rr = rr_intervals[valid_mask]
         
@@ -704,24 +713,30 @@ class ResearchTab(QtWidgets.QWidget):
             self.hrv_results.setText("Error: Insufficient valid R-R intervals for analysis")
             return
         
-        # Time domain metrics
-        rr_mean = np.mean(valid_rr)
-        rr_std = np.std(valid_rr)  # SDNN
-        rmssd = np.sqrt(np.mean(np.diff(valid_rr)**2))
-        pnn50 = np.sum(np.abs(np.diff(valid_rr)) > 50) / len(np.diff(valid_rr)) * 100
+        # --- TIME DOMAIN METRICS ---
+        # Replace all manual time and non-linear calculations with a single utility call
+        time_nonlinear_metrics = SignalProcessingUtils.calculate_hrv_time_domain(rr_intervals)
         
-        # Frequency domain analysis using NeuroKit
+        # Extract metrics for use in the rest of the function (e.g., frequency analysis, display)
+        rr_mean = time_nonlinear_metrics.get('mean_rr', 0)
+        rr_std = time_nonlinear_metrics.get('sdnn', 0) 
+        rmssd = time_nonlinear_metrics.get('rmssd', 0)
+        pnn50 = time_nonlinear_metrics.get('pnn50', 0)
+        sd1 = time_nonlinear_metrics.get('sd1', 0)
+        sd2 = time_nonlinear_metrics.get('sd2', 0)
+        sd_ratio = time_nonlinear_metrics.get('sd_ratio', 0)
+
+        # Frequency domain analysis using NeuroKit (remains the same)
         vlf_power = lf_power = hf_power = lf_hf_ratio = 0
-        
+        # ... (frequency domain setup, nk.hrv_frequency call, and extraction remains unchanged)
         try:
-            # Use NeuroKit's hrv_frequency with peaks directly
             # Filter the original peaks to match valid RR intervals
-            valid_peaks = self.peaks[:-1][valid_mask]  # Remove last peak since we have n-1 intervals
-            valid_peaks = np.append(valid_peaks, self.peaks[len(valid_peaks)])  # Add the corresponding last peak
+            valid_peaks = self.peaks[:-1][valid_mask]
+            valid_peaks = np.append(valid_peaks, self.peaks[len(valid_peaks)])
             
-            if len(valid_peaks) > 20:  # Minimum for frequency analysis
-                # Use NeuroKit's time domain analysis which includes frequency domain
-                hrv_time = nk.hrv_time(valid_peaks, sampling_rate=self.sampling_rate, show=False)
+            if len(valid_peaks) > 20:
+                # Although hrv_time is calculated above, we use NeuroKit here for consistency
+                # with the original frequency domain logic structure.
                 hrv_freq = nk.hrv_frequency(valid_peaks, sampling_rate=self.sampling_rate, show=False)
                 
                 # Extract frequency domain metrics
@@ -732,14 +747,8 @@ class ResearchTab(QtWidgets.QWidget):
                 
         except Exception as e:
             self.log_status(f"Frequency domain analysis failed: {str(e)}")
-            # Continue with time domain only
-        
-        # Nonlinear metrics (Poincaré plot parameters)
-        sd1 = np.std(np.diff(valid_rr) / np.sqrt(2))
-        sd2 = np.sqrt(2 * rr_std**2 - sd1**2) if 2 * rr_std**2 > sd1**2 else 0
-        sd_ratio = sd1 / sd2 if sd2 > 0 else 0
-        
-        # Store results
+
+        # Store results (using the calculated metrics)
         self.hrv_metrics = {
             'time_domain': {
                 'mean_rr': rr_mean, 'sdnn': rr_std, 'rmssd': rmssd,
@@ -752,43 +761,40 @@ class ResearchTab(QtWidgets.QWidget):
             'nonlinear': {'sd1': sd1, 'sd2': sd2, 'sd_ratio': sd_ratio}
         }
         
-        # Display results
+        # Display results (remains the same, using the extracted metrics)
         results_text = "<br>".join([
-                # --- TIME DOMAIN ---
-                f"<span style='font-size:14px; color:#37474F; font-weight:bold;'>TIME DOMAIN METRICS</span>",
-                (f"<span style='font-size:12px; color:#2E7D32;'>Mean R-R: </span>"
-                f"<span style='font-size:12px; color:#263238;'>{rr_mean:.1f} ms</span>"),
-                (f"<span style='font-size:12px; color:#2E7D32;'>SDNN: </span>"
-                f"<span style='font-size:12px; color:#263238;'>{rr_std:.1f} ms</span>"),
-                (f"<span style='font-size:12px; color:#2E7D32;'>RMSSD: </span>"
-                f"<span style='font-size:12px; color:#263238;'>{rmssd:.1f} ms</span>"),
-                (f"<span style='font-size:12px; color:#2E7D32;'>pNN50: </span>"
-                f"<span style='font-size:12px; color:#263238;'>{pnn50:.1f}%</span>"),
-                (f"<span style='font-size:12px; color:#2E7D32;'>Heart Rate: </span>"
-                f"<span style='font-size:12px; color:#263238;'>{60000/rr_mean:.1f} bpm</span>"),
-                "", 
+            f"<span style='font-size:14px; color:#37474F; font-weight:bold;'>TIME DOMAIN METRICS</span>",
+            (f"<span style='font-size:12px; color:#2E7D32;'>Mean R-R: </span>"
+            f"<span style='font-size:12px; color:#263238;'>{rr_mean:.1f} ms</span>"),
+            (f"<span style='font-size:12px; color:#2E7D32;'>SDNN: </span>"
+            f"<span style='font-size:12px; color:#263238;'>{rr_std:.1f} ms</span>"),
+            (f"<span style='font-size:12px; color:#2E7D32;'>RMSSD: </span>"
+            f"<span style='font-size:12px; color:#263238;'>{rmssd:.1f} ms</span>"),
+            (f"<span style='font-size:12px; color:#2E7D32;'>pNN50: </span>"
+            f"<span style='font-size:12px; color:#263238;'>{pnn50:.1f}%</span>"),
+            (f"<span style='font-size:12px; color:#2E7D32;'>Heart Rate: </span>"
+            f"<span style='font-size:12px; color:#263238;'>{60000/rr_mean:.1f} bpm</span>"),
+            "", 
 
-                # --- FREQUENCY DOMAIN ---
-                f"<span style='font-size:14px; color:#37474F; font-weight:bold;'>FREQUENCY DOMAIN</span>",
-                (f"<span style='font-size:12px; color:#2E7D32;'>VLF Power: </span>"
-                f"<span style='font-size:12px; color:#263238;'>{vlf_power:.3f} ms²</span>"),
-                (f"<span style='font-size:12px; color:#2E7D32;'>LF Power: </span>"
-                f"<span style='font-size:12px; color:#263238;'>{lf_power:.3f} ms²</span>"),
-                (f"<span style='font-size:12px; color:#2E7D32;'>HF Power: </span>"
-                f"<span style='font-size:12px; color:#263238;'>{hf_power:.3f} ms²</span>"),
-                (f"<span style='font-size:12px; color:#2E7D32;'>LF/HF Ratio: </span>"
-                f"<span style='font-size:12px; color:#263238;'>{lf_hf_ratio:.2f}</span>"),
-                "",  
+            f"<span style='font-size:14px; color:#37474F; font-weight:bold;'>FREQUENCY DOMAIN</span>",
+            (f"<span style='font-size:12px; color:#2E7D32;'>VLF Power: </span>"
+            f"<span style='font-size:12px; color:#263238;'>{vlf_power:.3f} ms²</span>"),
+            (f"<span style='font-size:12px; color:#2E7D32;'>LF Power: </span>"
+            f"<span style='font-size:12px; color:#263238;'>{lf_power:.3f} ms²</span>"),
+            (f"<span style='font-size:12px; color:#2E7D32;'>HF Power: </span>"
+            f"<span style='font-size:12px; color:#263238;'>{hf_power:.3f} ms²</span>"),
+            (f"<span style='font-size:12px; color:#2E7D32;'>LF/HF Ratio: </span>"
+            f"<span style='font-size:12px; color:#263238;'>{lf_hf_ratio:.2f}</span>"),
+            "", 
 
-                # --- NONLINEAR METRICS ---
-                f"<span style='font-size:14px; color:#37474F; font-weight:bold;'>NONLINEAR METRICS</span>",
-                (f"<span style='font-size:12px; color:#2E7D32;'>SD1: </span>"
-                f"<span style='font-size:12px; color:#263238;'>{sd1:.2f} ms</span>"),
-                (f"<span style='font-size:12px; color:#2E7D32;'>SD2: </span>"
-                f"<span style='font-size:12px; color:#263238;'>{sd2:.2f} ms</span>"),
-                (f"<span style='font-size:12px; color:#2E7D32;'>SD1/SD2 Ratio: </span>"
-                f"<span style='font-size:12px; color:#263238;'>{sd_ratio:.3f}</span>")
-            ])
+            f"<span style='font-size:14px; color:#37474F; font-weight:bold;'>NONLINEAR METRICS</span>",
+            (f"<span style='font-size:12px; color:#2E7D32;'>SD1: </span>"
+            f"<span style='font-size:12px; color:#263238;'>{sd1:.2f} ms</span>"),
+            (f"<span style='font-size:12px; color:#2E7D32;'>SD2: </span>"
+            f"<span style='font-size:12px; color:#263238;'>{sd2:.2f} ms</span>"),
+            (f"<span style='font-size:12px; color:#2E7D32;'>SD1/SD2 Ratio: </span>"
+            f"<span style='font-size:12px; color:#263238;'>{sd_ratio:.3f}</span>")
+        ])
         
         self.hrv_results.setText(results_text)
         
@@ -833,13 +839,13 @@ class ResearchTab(QtWidgets.QWidget):
         poor_quality_pct = np.sum(quality_scores < 0.3) / len(quality_scores) * 100
         
         # Additional metrics
-        samples = len(self.raw_ppg_signal)
-        duration = samples / self.sampling_rate
-        invalid_count = np.sum(np.isnan(self.raw_ppg_signal)) + np.sum(np.isinf(self.raw_ppg_signal))
+        raw_signal_metrics = DataValidationUtils.calculate_signal_quality_metrics(self.raw_ppg_signal)
+        filtered_signal_metrics = DataValidationUtils.calculate_signal_quality_metrics(self.filtered_ppg_signal)
         
-        signal_power = np.var(self.filtered_ppg_signal)
-        noise_estimate = np.var(np.diff(self.raw_ppg_signal))
-        snr_db = 10 * np.log10(signal_power / max(noise_estimate, 1e-10))
+        samples = raw_signal_metrics.get('samples', 0)
+        invalid_count = raw_signal_metrics.get('invalid_count', 0)
+        snr_db = filtered_signal_metrics.get('snr_db', -999)
+        duration = samples / self.sampling_rate if self.sampling_rate > 0 else 0
         
         # Quality rating
         if mean_quality >= 0.8:
@@ -1022,11 +1028,11 @@ class ResearchTab(QtWidgets.QWidget):
         for label in [self.samples_label, self.duration_label, self.missing_label, self.snr_label]:
             label.setText("-")
 
-    def update_time_window(self, window_text):
-        """Update time window for plot display."""
-        window_map = {"5s": 5, "10s": 10, "30s": 30, "60s": 60}
-        self.plot_window_seconds = window_map.get(window_text, 10)
-        self.update_plot_view()
+    # def update_time_window(self, window_text):
+    #     """Update time window for plot display."""
+    #     window_map = {"5s": 5, "10s": 10, "30s": 30, "60s": 60}
+    #     self.plot_window_seconds = window_map.get(window_text, 10)
+    #     self.update_plot_view()
 
     def update_plot_view(self):
         """Update visible time range of plots."""
@@ -1035,12 +1041,7 @@ class ResearchTab(QtWidgets.QWidget):
 
         max_time = self.time_axis[-1]
         
-        if self.is_jump_to_end_enabled:
-            start_time = max(0, max_time - self.plot_window_seconds)
-        else:
-            start_time = self.plot_slider.value() / 100.0
-
-        end_time = start_time + self.plot_window_seconds
+        start_time, end_time = self.get_plot_view_range(max_time)
         
         self.original_plot.setXRange(start_time, end_time, padding=0)
         self.filtered_plot.setXRange(start_time, end_time, padding=0)
@@ -1053,26 +1054,4 @@ class ResearchTab(QtWidgets.QWidget):
             return
 
         max_time = self.time_axis[-1]
-        scrollable_duration = max(0, max_time - self.plot_window_seconds)
-        self.plot_slider.setMaximum(int(scrollable_duration * 100))
-        
-        if self.is_jump_to_end_enabled:
-            self.plot_slider.blockSignals(True)
-            self.plot_slider.setValue(self.plot_slider.maximum())
-            self.plot_slider.blockSignals(False)
-
-    def scroll_plots(self, value):
-        """Handle manual plot scrolling."""
-        if not self.is_jump_to_end_enabled:
-            self.update_plot_view()
-
-    def disable_jump_to_end(self):
-        """Disable auto-scrolling when user interacts with slider."""
-        self.jump_to_end_checkbox.setChecked(False)
-
-    def toggle_jump_to_end(self, state):
-        """Toggle auto-scrolling behavior."""
-        self.is_jump_to_end_enabled = (state == QtCore.Qt.Checked)
-        if self.is_jump_to_end_enabled:
-            self.update_slider()
-        self.update_plot_view()
+        self.update_plot_slider(max_time=max_time)
