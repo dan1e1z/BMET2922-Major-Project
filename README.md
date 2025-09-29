@@ -32,6 +32,7 @@ This project, developed for the BMET2922 course, is a desktop application for re
 * [PyQtGraph](http://www.pyqtgraph.org/) for high-performance plotting
 * [SciPy](https://scipy.org/) for signal processing
 * [PySerial](https://pyserial.readthedocs.io/) for Bluetooth communication
+* [NeuroKit2](https://neuropsychology.github.io/NeuroKit/introduction.html) For PPG signal processing
   
 
 ## Getting Started
