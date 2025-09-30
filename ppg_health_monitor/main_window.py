@@ -2,11 +2,18 @@
 from PyQt5 import QtWidgets, QtCore, QtGui
 from datetime import datetime
 import numpy as np
-# from ui_components import UserManager, SystemLog, BluetoothConnectionStatus
-# from ui_tabs import AccountTab, LiveMonitorTab, HistoryTab, ResearchTab
-# from bluetooth_monitor import BluetoothMonitor
-from ppg_health_monitor.ui_components import UserManager, SystemLog, BluetoothConnectionStatus
-from ppg_health_monitor.ui_tabs import AccountTab, LiveMonitorTab, HistoryTab, ResearchTab
+
+from ppg_health_monitor.ui_tabs import (
+    AccountTab,
+    HistoryTab,
+    LiveMonitorTab,
+    ResearchTab
+)
+from ppg_health_monitor.ui_components import (
+    BluetoothConnectionStatus,
+    SystemLog,
+    UserManager
+)
 from ppg_health_monitor.bluetooth_monitor import BluetoothMonitor
 
 
@@ -48,7 +55,6 @@ class MainWindow(QtWidgets.QMainWindow):
         self.bluetooth_monitor.connection_timeout.connect(self.handle_connection_timeout)
 
         self.bluetooth_monitor_thread.start()
-
 
         # Set up the main window UI
         self.setup_ui()

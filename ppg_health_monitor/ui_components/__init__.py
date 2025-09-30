@@ -1,3 +1,11 @@
-from ui_components.user_manager import UserManager
-from ui_components.system_log import SystemLog
-from ui_components.bluetooth_connection_status import BluetoothConnectionStatus
+"""UI components for the application."""
+
+from .bluetooth_connection_status import BluetoothConnectionStatus
+from .system_log import SystemLog
+from .user_manager import UserManager
+
+__all__ = [
+    'BluetoothConnectionStatus',
+    'SystemLog',
+    'UserManager',
+]

@@ -2,7 +2,7 @@ from PyQt5 import QtWidgets, QtCore, QtGui
 import pyqtgraph as pg
 import numpy as np
 import neurokit2 as nk
-from scipy.signal import butter, filtfilt, welch, savgol_filter, freqz
+from scipy.signal import butter, filtfilt, freqz, savgol_filter
 import pandas as pd
 import os
 from datetime import datetime
@@ -11,6 +11,7 @@ from ppg_health_monitor.utils.plot_style_helper import PlotStyleHelper
 from ppg_health_monitor.utils.plot_navigation_mixin import PlotNavigationMixin
 from ppg_health_monitor.utils.data_validation_utils import DataValidationUtils
 from ppg_health_monitor.utils.signal_processing_utils import SignalProcessingUtils
+from ppg_health_monitor.utils.session_info_formatter import SessionInfoFormatter
 
 class ResearchTab(QtWidgets.QWidget, PlotNavigationMixin):
     """Advanced research tab for PPG signal analysis with comprehensive filtering and HRV analysis."""
@@ -34,10 +35,6 @@ class ResearchTab(QtWidgets.QWidget, PlotNavigationMixin):
         # Results storage
         self.hrv_metrics = {}
         self.signal_quality_metrics = {}
-        
-        # Display settings
-        # self.plot_window_seconds = 10
-        # self.is_jump_to_end_enabled = True
         
         self.setup_ui()
 
@@ -90,12 +87,11 @@ class ResearchTab(QtWidgets.QWidget, PlotNavigationMixin):
         
         layout.addWidget(self.plot_tabs)
         
-        # Plot controls
+        # Plot controls using PlotNavigationMixin
         controls_layout = self.create_plot_controls()
         layout.addLayout(controls_layout)
         
         return widget
-
 
     def create_time_domain_tab(self):
         """Create time domain plotting tab."""
@@ -110,7 +106,10 @@ class ResearchTab(QtWidgets.QWidget, PlotNavigationMixin):
             x_label="Time", 
             x_units="s", 
             y_label="Amplitude", 
-            y_units="ADC units"
+            y_units="ADC units",
+            grid=True,
+            mouse_enabled=False,
+            menu_enabled=False
         )
         self.original_curve = self.original_plot.plot(pen=pg.mkPen('b', width=1))
         time_layout.addWidget(self.original_plot)
@@ -123,7 +122,10 @@ class ResearchTab(QtWidgets.QWidget, PlotNavigationMixin):
             x_label="Time", 
             x_units="s", 
             y_label="Amplitude", 
-            y_units="normalized"
+            y_units="normalized",
+            grid=True,
+            mouse_enabled=False,
+            menu_enabled=False
         )
         self.filtered_curve = self.filtered_plot.plot(pen=pg.mkPen('g', width=1.5))
         
@@ -149,7 +151,10 @@ class ResearchTab(QtWidgets.QWidget, PlotNavigationMixin):
             x_label="Beat Number",
             x_units="",
             y_label="R-R Interval",
-            y_units="ms"
+            y_units="ms",
+            grid=True,
+            mouse_enabled=False,
+            menu_enabled=False
         )
         self.hrv_curve = self.hrv_plot.plot(pen=pg.mkPen('c', width=2), symbol='o', symbolSize=4)
         hrv_layout.addWidget(self.hrv_plot)
@@ -507,13 +512,18 @@ class ResearchTab(QtWidgets.QWidget, PlotNavigationMixin):
         self.log_status(f"Loaded session: {len(self.raw_ppg_signal)} samples, {self.time_axis[-1]:.1f}s duration")
 
     def update_metadata_display(self):
-        """Update session metadata display."""
+        """Update session metadata display using SessionInfoFormatter."""
         if self.session_metadata:
             start_time = self.session_metadata.get("start", "Unknown")
-            duration = self.session_metadata.get("duration", "Unknown")
+            duration_minutes = self.session_metadata.get("duration_minutes", 0)
+            duration = SessionInfoFormatter.format_duration(duration_minutes)
             samples = len(self.raw_ppg_signal)
             
-            metadata_text = (f"Session: {start_time} | Duration: {duration}s | "
+            # Format the datetime 
+            if isinstance(start_time, str) and start_time != "Unknown":
+                start_time = SessionInfoFormatter.format_datetime(start_time)
+            
+            metadata_text = (f"Session: {start_time} | Duration: {duration} | "
                            f"Samples: {samples} | Sampling Rate: {self.sampling_rate}Hz")
             self.metadata_label.setText(metadata_text)
 
@@ -529,12 +539,13 @@ class ResearchTab(QtWidgets.QWidget, PlotNavigationMixin):
         invalid_count = metrics.get('invalid_count', 0)
         invalid_percent = metrics.get('invalid_percent', 0)
         snr_db = metrics.get('snr_db', 0)
-        
-        duration = samples / self.sampling_rate
+
+        duration_minutes = self.session_metadata.get("duration_minutes", 0)
+        duration = SessionInfoFormatter.format_duration(duration_minutes)
         
         # Update displays
         self.samples_label.setText(f"{samples:,}")
-        self.duration_label.setText(f"{duration:.1f}s")
+        self.duration_label.setText(duration)
         self.missing_label.setText(f"{invalid_count} ({invalid_percent:.1f}%)")
         self.snr_label.setText(f"{snr_db:.1f} dB")
 
@@ -551,7 +562,7 @@ class ResearchTab(QtWidgets.QWidget, PlotNavigationMixin):
             self.high_cutoff_widget.setVisible(filter_type in ["Bandpass", "Low-pass"])
 
     def apply_filter(self):
-        """Apply selected filtering method."""
+        """Apply selected filtering method using SignalProcessingUtils where appropriate."""
         if self.raw_ppg_signal.size == 0:
             self.log_status("Error: No signal loaded to filter")
             return
@@ -570,7 +581,11 @@ class ResearchTab(QtWidgets.QWidget, PlotNavigationMixin):
                 self.log_status(f"Adjusted window length to {window_length}")
             self.filtered_ppg_signal = savgol_filter(signal, window_length, poly_order)
         elif "NeuroKit" in method:
-            self.filtered_ppg_signal = nk.ppg_clean(signal, sampling_rate=self.sampling_rate, method="elgendi")
+            self.filtered_ppg_signal = SignalProcessingUtils.clean_ppg_signal(
+                signal, 
+                sampling_rate=self.sampling_rate, 
+                method="elgendi"
+            )
         else:  # No filter
             self.filtered_ppg_signal = signal.copy()
         
@@ -594,6 +609,7 @@ class ResearchTab(QtWidgets.QWidget, PlotNavigationMixin):
         filter_type = self.filter_type_combo.currentText().lower()
         order = self.order_slider.value()
         
+        # Get frequencies in Hz
         lowcut_hz = self.low_cutoff_slider.value() / 100.0
         highcut_hz = self.high_cutoff_slider.value() / 100.0
         
@@ -603,22 +619,34 @@ class ResearchTab(QtWidgets.QWidget, PlotNavigationMixin):
             highcut_hz = nyquist * 0.95
             self.log_status(f"Warning: High cutoff reduced to {highcut_hz:.2f}Hz")
         
-        # Design filter
+        # Design filter (pass Hz values, normalization happens inside)
         b, a = self.design_butter_filter(lowcut_hz, highcut_hz, order, filter_type)
         self.update_filter_response(b, a)
         
         return filtfilt(b, a, signal)
 
-    def design_butter_filter(self, lowcut, highcut, order, btype):
-        """Design Butterworth filter."""
+    def design_butter_filter(self, lowcut_hz, highcut_hz, order, btype):
+        """
+        Design Butterworth filter.
+        
+        Args:
+            lowcut_hz: Low cutoff frequency in Hz
+            highcut_hz: High cutoff frequency in Hz
+            order: Filter order
+            btype: Filter type ('low-pass', 'high-pass', 'bandpass')
+        
+        Returns:
+            tuple: (b, a) filter coefficients
+        """
         nyquist = self.sampling_rate / 2
         
+        # Normalize frequencies by Nyquist (butter expects 0-1 range)
         if btype in ['low-pass', 'lowpass', 'low']:
-            return butter(order, highcut / nyquist, btype='low')
+            return butter(order, highcut_hz / nyquist, btype='low')
         elif btype in ['high-pass', 'highpass', 'high']:
-            return butter(order, lowcut / nyquist, btype='high')
+            return butter(order, lowcut_hz / nyquist, btype='high')
         else:  # bandpass
-            return butter(order, [lowcut / nyquist, highcut / nyquist], btype='band')
+            return butter(order, [lowcut_hz / nyquist, highcut_hz / nyquist], btype='band')
 
     def update_filter_response(self, b, a):
         """Update filter frequency response plot."""
@@ -629,7 +657,7 @@ class ResearchTab(QtWidgets.QWidget, PlotNavigationMixin):
         self.filter_response_plot.setYRange(-60, 5)
 
     def detect_peaks(self):
-        """Detect cardiac peaks in filtered signal."""
+        """Detect cardiac peaks in filtered signal using SignalProcessingUtils."""
         if self.filtered_ppg_signal.size == 0:
             QtWidgets.QMessageBox.warning(
                 self, "No Filtered Signal", 
@@ -647,11 +675,13 @@ class ResearchTab(QtWidgets.QWidget, PlotNavigationMixin):
         }
         
         nk_method = method_map.get(method, "elgendi")
-        _, info = nk.ppg_peaks(self.filtered_ppg_signal, 
-                             sampling_rate=self.sampling_rate,
-                             method=nk_method)
         
-        self.peaks = info.get("PPG_Peaks", np.array([]))
+        self.peaks, _ = SignalProcessingUtils.detect_ppg_peaks(
+            self.filtered_ppg_signal,
+            sampling_rate=self.sampling_rate,
+            method=nk_method
+        )
+        
         self.log_status(f"Detected {len(self.peaks)} peaks using {method}")
         self.update_filtered_plot()
 
@@ -694,49 +724,61 @@ class ResearchTab(QtWidgets.QWidget, PlotNavigationMixin):
         self.rr_lines.clear()
 
     def analyze_hrv(self):
-        """Perform comprehensive heart rate variability analysis."""
+        """Perform comprehensive heart rate variability analysis using SignalProcessingUtils."""
         if self.peaks.size < 10:
             msg = "No peaks detected" if self.peaks.size == 0 else f"Only {len(self.peaks)} peaks detected"
             QtWidgets.QMessageBox.warning(self, "Insufficient Peaks", 
                 f"{msg}. HRV analysis requires at least 10 peaks.")
             return
             
-        # Calculate R-R intervals in milliseconds using the utility (replaces manual np.diff/division)
-        rr_intervals = SignalProcessingUtils.calculate_rr_intervals(self.peaks, self.sampling_rate)
+        # Calculate R-R intervals
+        rr_intervals = SignalProcessingUtils.calculate_rr_intervals(
+            self.peaks, 
+            self.sampling_rate
+        )
         
-        # Filter physiologically plausible intervals (300-2000ms) - This filter logic is necessary before the utility
-        # We must replicate the utility's internal filtering here to ensure consistency with the display logic
-        valid_mask = (rr_intervals > 300) & (rr_intervals < 2000)
-        valid_rr = rr_intervals[valid_mask]
+        if len(rr_intervals) < 5:
+            self.hrv_results.setText("Error: Insufficient R-R intervals for analysis")
+            return
         
-        if len(valid_rr) < 5:
+        # Calculate time domain and nonlinear HRV metrics
+        # handles filtering (300-2000ms) internally
+        time_nonlinear_metrics = SignalProcessingUtils.calculate_hrv_time_domain(rr_intervals)
+        
+        if not time_nonlinear_metrics:
             self.hrv_results.setText("Error: Insufficient valid R-R intervals for analysis")
             return
         
-        # --- TIME DOMAIN METRICS ---
-        # Replace all manual time and non-linear calculations with a single utility call
-        time_nonlinear_metrics = SignalProcessingUtils.calculate_hrv_time_domain(rr_intervals)
-        
-        # Extract metrics for use in the rest of the function (e.g., frequency analysis, display)
+        # Extract metrics from utility results
         rr_mean = time_nonlinear_metrics.get('mean_rr', 0)
-        rr_std = time_nonlinear_metrics.get('sdnn', 0) 
+        rr_std = time_nonlinear_metrics.get('sdnn', 0)
         rmssd = time_nonlinear_metrics.get('rmssd', 0)
         pnn50 = time_nonlinear_metrics.get('pnn50', 0)
         sd1 = time_nonlinear_metrics.get('sd1', 0)
         sd2 = time_nonlinear_metrics.get('sd2', 0)
         sd_ratio = time_nonlinear_metrics.get('sd_ratio', 0)
 
-        # Frequency domain analysis using NeuroKit (remains the same)
+        # Frequency domain analysis using NeuroKit
+        # We need to filter RR intervals again for NeuroKit's frequency analysis
+        valid_mask = (rr_intervals > 300) & (rr_intervals < 2000)
+        valid_rr = rr_intervals[valid_mask]
+        
         vlf_power = lf_power = hf_power = lf_hf_ratio = 0
-        # ... (frequency domain setup, nk.hrv_frequency call, and extraction remains unchanged)
+        
         try:
             # Filter the original peaks to match valid RR intervals
             valid_peaks = self.peaks[:-1][valid_mask]
-            valid_peaks = np.append(valid_peaks, self.peaks[len(valid_peaks)])
             
-            if len(valid_peaks) > 20:
-                # Although hrv_time is calculated above, we use NeuroKit here for consistency
-                # with the original frequency domain logic structure.
+            # Append the corresponding last peak for the last valid interval
+            if len(valid_peaks) > 0 and len(valid_peaks) < len(self.peaks):
+                # Find the index of the last valid peak in the original array
+                last_valid_idx = np.where(valid_mask)[0][-1] + 1
+                if last_valid_idx < len(self.peaks):
+                    valid_peaks = np.append(valid_peaks, self.peaks[last_valid_idx])
+
+            valid_peaks = SignalProcessingUtils.remove_duplicate_peaks(valid_peaks)
+            
+            if len(valid_peaks) > 20:  # Minimum for frequency analysis
                 hrv_freq = nk.hrv_frequency(valid_peaks, sampling_rate=self.sampling_rate, show=False)
                 
                 # Extract frequency domain metrics
@@ -748,11 +790,11 @@ class ResearchTab(QtWidgets.QWidget, PlotNavigationMixin):
         except Exception as e:
             self.log_status(f"Frequency domain analysis failed: {str(e)}")
 
-        # Store results (using the calculated metrics)
+        # Store results
         self.hrv_metrics = {
             'time_domain': {
                 'mean_rr': rr_mean, 'sdnn': rr_std, 'rmssd': rmssd,
-                'pnn50': pnn50, 'heart_rate': 60000 / rr_mean
+                'pnn50': pnn50, 'heart_rate': 60000 / rr_mean if rr_mean > 0 else 0
             },
             'frequency_domain': {
                 'vlf_power': vlf_power, 'lf_power': lf_power,
@@ -761,7 +803,7 @@ class ResearchTab(QtWidgets.QWidget, PlotNavigationMixin):
             'nonlinear': {'sd1': sd1, 'sd2': sd2, 'sd_ratio': sd_ratio}
         }
         
-        # Display results (remains the same, using the extracted metrics)
+        # Display results
         results_text = "<br>".join([
             f"<span style='font-size:14px; color:#37474F; font-weight:bold;'>TIME DOMAIN METRICS</span>",
             (f"<span style='font-size:12px; color:#2E7D32;'>Mean R-R: </span>"
@@ -773,7 +815,7 @@ class ResearchTab(QtWidgets.QWidget, PlotNavigationMixin):
             (f"<span style='font-size:12px; color:#2E7D32;'>pNN50: </span>"
             f"<span style='font-size:12px; color:#263238;'>{pnn50:.1f}%</span>"),
             (f"<span style='font-size:12px; color:#2E7D32;'>Heart Rate: </span>"
-            f"<span style='font-size:12px; color:#263238;'>{60000/rr_mean:.1f} bpm</span>"),
+            f"<span style='font-size:12px; color:#263238;'>{60000/rr_mean if rr_mean > 0 else 0:.1f} bpm</span>"),
             "", 
 
             f"<span style='font-size:14px; color:#37474F; font-weight:bold;'>FREQUENCY DOMAIN</span>",
@@ -805,7 +847,7 @@ class ResearchTab(QtWidgets.QWidget, PlotNavigationMixin):
         self.log_status(f"HRV analysis completed: {len(valid_rr)} intervals analyzed")
 
     def assess_signal_quality(self):
-        """Perform signal quality assessment using NeuroKit."""
+        """Perform signal quality assessment using NeuroKit and DataValidationUtils."""
         if self.raw_ppg_signal.size == 0:
             self.quality_results.setText("No signal loaded for quality assessment")
             return
@@ -814,7 +856,7 @@ class ResearchTab(QtWidgets.QWidget, PlotNavigationMixin):
             self.quality_results.setText("No filtered signal available. Please apply filtering first.")
             return
         
-        # Use NeuroKit quality assessment
+        # NeuroKit quality assessment
         if self.peaks.size > 0:
             quality_scores = nk.ppg_quality(
                 self.filtered_ppg_signal, 
@@ -838,13 +880,13 @@ class ResearchTab(QtWidgets.QWidget, PlotNavigationMixin):
         high_quality_pct = np.sum(quality_scores > 0.7) / len(quality_scores) * 100
         poor_quality_pct = np.sum(quality_scores < 0.3) / len(quality_scores) * 100
         
-        # Additional metrics
+        # additional metrics
         raw_signal_metrics = DataValidationUtils.calculate_signal_quality_metrics(self.raw_ppg_signal)
         filtered_signal_metrics = DataValidationUtils.calculate_signal_quality_metrics(self.filtered_ppg_signal)
         
         samples = raw_signal_metrics.get('samples', 0)
         invalid_count = raw_signal_metrics.get('invalid_count', 0)
-        snr_db = filtered_signal_metrics.get('snr_db', -999)
+        snr_db = filtered_signal_metrics.get('snr_db', 0)
         duration = samples / self.sampling_rate if self.sampling_rate > 0 else 0
         
         # Quality rating
@@ -864,7 +906,7 @@ class ResearchTab(QtWidgets.QWidget, PlotNavigationMixin):
             'high_quality_pct': high_quality_pct,
             'poor_quality_pct': poor_quality_pct,
             'snr_db': snr_db,
-            'invalid_data_pct': invalid_count/samples*100,
+            'invalid_data_pct': invalid_count/samples*100 if samples > 0 else 0,
         }
         
         # Display results
@@ -874,7 +916,7 @@ class ResearchTab(QtWidgets.QWidget, PlotNavigationMixin):
             f"<span style='font-size:12px; color:#263238;'>{mean_quality:.3f} ({quality_rating})</span>",
             "",
             f"<span style='font-size:12px; color:#455A64; font-weight:bold;'>NEUROKIT TEMPLATE MATCHING:</span>",
-            f"<span style='font-size:12px; color:#2E7D32;'>Mean Quality Score:</span>"
+            f"<span style='font-size:12px; color:#2E7D32;'>Mean Quality Score:</span> "
             f"<span style='font-size:12px; color:#263238;'>{mean_quality:.3f}</span>",
             f"<span style='font-size:12px; color:#2E7D32;'>Quality Range:</span> "
             f"<span style='font-size:12px; color:#263238;'>{min_quality:.3f} - {max_quality:.3f}</span>",
@@ -882,19 +924,19 @@ class ResearchTab(QtWidgets.QWidget, PlotNavigationMixin):
             f"<span style='font-size:12px; color:#263238;'>{std_quality:.3f}</span>",
             "",
             f"<span style='font-size:12px; color:#455A64; font-weight:bold;'>QUALITY DISTRIBUTION:</span>",
-            f"<span style='font-size:12px; color:#2E7D32;'>High Quality (>0.7):</span> "
+            f"<span style='font-size:12px; color:#2E7D32;'>High Quality (&gt;0.7):</span> "
             f"<span style='font-size:12px; color:#263238;'>{high_quality_pct:.1f}%</span>",
             f"<span style='font-size:12px; color:#2E7D32;'>Poor Quality (&lt;0.3):</span> "
             f"<span style='font-size:12px; color:#263238;'>{poor_quality_pct:.1f}%</span>",
             "",
             f"<span style='font-size:12px; color:#455A64; font-weight:bold;'>ADDITIONAL METRICS:</span>",
-            f"<span style='font-size:12px;  color:#2E7D32;'>SNR:</span> "
+            f"<span style='font-size:12px; color:#2E7D32;'>SNR:</span> "
             f"<span style='font-size:12px; color:#263238;'>{snr_db:.1f} dB</span>",
-            f"<span style='font-size:12px;  color:#2E7D32;'>Invalid Data:</span> "
-            f"<span style='font-size:12px; color:#263238;'>{invalid_count/samples*100:.1f}%</span>",
-            f"<span style='font-size:12px;  color:#2E7D32;'>Duration:</span> "
+            f"<span style='font-size:12px; color:#2E7D32;'>Invalid Data:</span> "
+            f"<span style='font-size:12px; color:#263238;'>{invalid_count/samples*100 if samples > 0 else 0:.1f}%</span>",
+            f"<span style='font-size:12px; color:#2E7D32;'>Duration:</span> "
             f"<span style='font-size:12px; color:#263238;'>{duration:.1f}s</span>",
-            f"<span style='font-size:12px;  color:#2E7D32;'>Samples:</span> "
+            f"<span style='font-size:12px; color:#2E7D32;'>Samples:</span> "
             f"<span style='font-size:12px; color:#263238;'>{samples:,}</span>"
         ])
         
@@ -1028,19 +1070,12 @@ class ResearchTab(QtWidgets.QWidget, PlotNavigationMixin):
         for label in [self.samples_label, self.duration_label, self.missing_label, self.snr_label]:
             label.setText("-")
 
-    # def update_time_window(self, window_text):
-    #     """Update time window for plot display."""
-    #     window_map = {"5s": 5, "10s": 10, "30s": 30, "60s": 60}
-    #     self.plot_window_seconds = window_map.get(window_text, 10)
-    #     self.update_plot_view()
-
     def update_plot_view(self):
-        """Update visible time range of plots."""
+        """Update visible time range of plots using PlotNavigationMixin."""
         if self.time_axis.size == 0:
             return
 
         max_time = self.time_axis[-1]
-        
         start_time, end_time = self.get_plot_view_range(max_time)
         
         self.original_plot.setXRange(start_time, end_time, padding=0)
@@ -1048,7 +1083,7 @@ class ResearchTab(QtWidgets.QWidget, PlotNavigationMixin):
         self.hrv_plot.setXRange(start_time, end_time, padding=0)
 
     def update_slider(self):
-        """Update plot navigation slider."""
+        """Update plot navigation slider using PlotNavigationMixin."""
         if self.time_axis.size == 0:
             self.plot_slider.setMaximum(0)
             return
