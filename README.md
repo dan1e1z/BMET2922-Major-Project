@@ -85,5 +85,5 @@ You can install the necessary Python packages using the `requirements.txt` file.
 
 To run the application, ensure your virtual environment is activated and execute the `main.py` script from the project's root directory:
 ```sh
-python ppg_health_monitor/main.py
+python -m ppg_health_monitor.main
 ```
