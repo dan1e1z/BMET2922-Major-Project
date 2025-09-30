@@ -2,13 +2,16 @@ from PyQt5 import QtWidgets, QtCore, QtGui
 import pyqtgraph as pg
 import numpy as np
 from datetime import datetime
-import neurokit2 as nk
 from scipy import signal
 from collections import deque
 
-from ppg_health_monitor.utils.plot_navigation_mixin import PlotNavigationMixin
-from ppg_health_monitor.utils.plot_style_helper import PlotStyleHelper
-from ppg_health_monitor.utils.signal_processing_utils import SignalProcessingUtils
+from ppg_health_monitor.utils import (
+    PlotNavigationMixin,
+    PlotStyleHelper,
+    SignalProcessingUtils,
+    SessionInfoFormatter
+)
+
 
 class LiveMonitorTab(QtWidgets.QWidget, PlotNavigationMixin):
     """
@@ -152,7 +155,6 @@ class LiveMonitorTab(QtWidgets.QWidget, PlotNavigationMixin):
             menu_enabled=False
         )
         
-        # Add legend positioned alongside the title (top-left, higher up)
         self.ibi_legend = PlotStyleHelper.create_legend(self.ibi_plot)
         
         self.ibi_curve = self.ibi_plot.plot(
@@ -167,7 +169,6 @@ class LiveMonitorTab(QtWidgets.QWidget, PlotNavigationMixin):
 
         # --- Respiratory Rate Plot (Initially Hidden) ---
         self.rr_plot = pg.PlotWidget()
-
         PlotStyleHelper.configure_plot_widget(
             self.rr_plot,
             title="Respiratory Rate",
@@ -183,10 +184,9 @@ class LiveMonitorTab(QtWidgets.QWidget, PlotNavigationMixin):
             name='Respiratory Rate'
         )
         self.rr_plot.setVisible(False)
-
         plots_layout.addWidget(self.rr_plot, stretch=2)
 
-        # === PLOT NAVIGATION ===
+        # === PLOT NAVIGATION === 
         self.setup_plot_navigation(plots_layout, default_window_seconds=10)
         
         # === CONTROLS PANEL ===
@@ -210,11 +210,12 @@ class LiveMonitorTab(QtWidgets.QWidget, PlotNavigationMixin):
         self.toggle_legends(QtCore.Qt.Checked)
 
     def _create_controls_panel(self):
+        """Create the right-side controls panel."""
         controls_widget = QtWidgets.QWidget()
         controls_layout = QtWidgets.QVBoxLayout()
         controls_layout.setSpacing(15)
 
-        # BPM display
+        # --- Heart Rate Panel ---
         bpm_group = QtWidgets.QGroupBox("Heart Rate")
         bpm_layout = QtWidgets.QVBoxLayout(bpm_group)
         
@@ -275,16 +276,20 @@ class LiveMonitorTab(QtWidgets.QWidget, PlotNavigationMixin):
         # --- Alarm Thresholds Panel ---
         thresholds_group = QtWidgets.QGroupBox("BPM Thresholds")
         thresholds_layout = QtWidgets.QVBoxLayout(thresholds_group)
+        
         self.low_slider = QtWidgets.QSlider(QtCore.Qt.Horizontal)
         self.low_slider.setRange(20, 100)
         self.low_slider.setValue(self.bpm_low)
         self.low_slider.valueChanged.connect(self.update_thresholds)
+        
         self.high_slider = QtWidgets.QSlider(QtCore.Qt.Horizontal)
         self.high_slider.setRange(120, 250)
         self.high_slider.setValue(self.bpm_high)
         self.high_slider.valueChanged.connect(self.update_thresholds)
+        
         self.low_label = QtWidgets.QLabel(f"Low BPM Warning: {self.bpm_low}")
         self.high_label = QtWidgets.QLabel(f"High BPM Warning: {self.bpm_high}")
+        
         thresholds_layout.addWidget(self.low_label)
         thresholds_layout.addWidget(self.low_slider)
         thresholds_layout.addWidget(self.high_label)
@@ -294,7 +299,9 @@ class LiveMonitorTab(QtWidgets.QWidget, PlotNavigationMixin):
         # --- Alarm Display Widget ---
         self.alarm_widget = QtWidgets.QLabel("")
         self.alarm_widget.setAlignment(QtCore.Qt.AlignCenter)
-        self.alarm_widget.setStyleSheet("QLabel { background-color: #ff0000; color: white; font-weight: bold; padding: 10px; }")
+        self.alarm_widget.setStyleSheet(
+            "QLabel { background-color: #ff0000; color: white; font-weight: bold; padding: 10px; }"
+        )
         self.alarm_widget.setVisible(False)
         controls_layout.addWidget(self.alarm_widget)
 
@@ -352,17 +359,18 @@ class LiveMonitorTab(QtWidgets.QWidget, PlotNavigationMixin):
         return alarm_msg 
 
     def process_ppg_signal(self):
-        """Process PPG signal using shared utilities."""
+        """Process PPG signal using SignalProcessingUtils for consistency."""
         ppg_signal = np.array(self.ppg_buffer)
         ppg_times_array = np.array(self.ppg_times)
         
-        # Use shared signal processing utilities
+        # signal cleaning
         ppg_cleaned = SignalProcessingUtils.clean_ppg_signal(
             ppg_signal,
             sampling_rate=self.sampling_rate,
             method="elgendi"
         )
         
+        # peak detection
         peaks, info = SignalProcessingUtils.detect_ppg_peaks(
             ppg_cleaned,
             sampling_rate=self.sampling_rate,
@@ -421,13 +429,13 @@ class LiveMonitorTab(QtWidgets.QWidget, PlotNavigationMixin):
         self.rr_times.append(self.last_packet_time)
 
     def calculate_hrv_metrics(self):
-        """Calculate HRV using shared utilities."""
+        """Calculate HRV metrics using SignalProcessingUtils for consistency."""
         if len(self.ibi_data) < 10:
             return
         
         rr_intervals = np.array(self.ibi_data)
         
-        # Use shared HRV calculation
+        # HRV calculation
         self.hrv_metrics = SignalProcessingUtils.calculate_hrv_time_domain(rr_intervals)
         
         if not self.hrv_metrics:
@@ -483,7 +491,7 @@ class LiveMonitorTab(QtWidgets.QWidget, PlotNavigationMixin):
                 self.last_ibi_time = ibi_time
 
     def update_plots(self):
-        """Update plots - now uses mixin methods."""
+        """Update plot data and view using PlotNavigationMixin methods."""
         # Update plot data
         if self.bpm_plot.isVisible() and self.time_bpm_data and self.visual_bpm_data:
             self.bpm_curve.setData(self.time_bpm_data, self.visual_bpm_data)
@@ -502,7 +510,7 @@ class LiveMonitorTab(QtWidgets.QWidget, PlotNavigationMixin):
         self.update_slider()
 
     def update_plot_view(self):
-        """Update plot view using mixin method."""
+        """Update plot view using PlotNavigationMixin method."""
         if not self.time_ppg_data:
             return
         
@@ -519,33 +527,42 @@ class LiveMonitorTab(QtWidgets.QWidget, PlotNavigationMixin):
             self.rr_plot.setXRange(start_time, end_time, padding=0)
 
     def update_slider(self):
-        """Update slider using mixin method."""
+        """Update slider using PlotNavigationMixin method."""
         if not self.time_ppg_data:
             return
         
         max_time = self.time_ppg_data[-1]
         self.update_plot_slider(max_time)
 
-    def scroll_plots(self, value):
-        """Update the plot view when the slider is moved manually."""
-        if not self.is_auto_scrolling:
-            self.update_plot_view()
-
-    def disable_auto_scroll(self):
-        """Disables auto-scrolling when the user interacts with the slider."""
-        self.auto_scroll_checkbox.setChecked(False)
-
-    def toggle_auto_scroll(self, state):
-        """Enables or disables auto-scrolling based on the checkbox state."""
-        self.is_auto_scrolling = (state == QtCore.Qt.Checked)
-        if self.is_auto_scrolling:
-            self.update_slider()
-            self.update_plot_view()
-
     def start_session(self, username):
         """Start a new monitoring session for the specified user."""
         self.current_user = username
         self.session_start_time = datetime.now()
+        self.update_session_info()
+
+    def update_session_info(self):
+        """Update the session information display using SessionInfoFormatter."""
+        if self.current_user and self.session_start_time:
+            duration = datetime.now() - self.session_start_time
+            minutes = duration.total_seconds() / 60
+            
+            if self.session_bpm:
+                # session statistics
+                stats = SessionInfoFormatter.calculate_session_stats(self.session_bpm)
+                
+                # Get health status
+                health_status, status_color = SessionInfoFormatter.format_bpm_status(
+                    stats['avg'],
+                    low_threshold=self.bpm_low,
+                    high_threshold=self.bpm_high
+                )
+                
+                # Update BPM status with colored health indicator
+                self.bpm_status.setText(
+                    f"<span style='color: {status_color}; font-weight: bold;'>{health_status}</span>"
+                )
+        else:
+            self.bpm_status.setText("Monitoring...")
 
     def update_thresholds(self):
         """Update BPM alarm thresholds."""
@@ -562,21 +579,25 @@ class LiveMonitorTab(QtWidgets.QWidget, PlotNavigationMixin):
 
     def check_bpm_alarm(self):
         """Check BPM against thresholds and trigger alarms if needed."""
+        prev_state = self.alarm_active
         msg = None
 
         if self.current_bpm < self.bpm_low:
             self.alarm_active = True
             self.alarm_widget.setText(f"WARNING: PULSE LOW: {self.current_bpm:.1f} BPM")
-            self.alarm_timer.start(1000)
-            msg = "Pulse Low"
+            if not prev_state:
+                self.alarm_timer.start(1000)
+                msg = "Pulse Low"
                 
         elif self.current_bpm > self.bpm_high:
             self.alarm_active = True
             self.alarm_widget.setText(f"WARNING: PULSE HIGH: {self.current_bpm:.1f} BPM")
-            self.alarm_timer.start(1000)
-            msg = "Pulse High"
+            if not prev_state:
+                self.alarm_timer.start(1000)
+                msg = "Pulse High"
                 
         else:
+            if prev_state:
                 self.alarm_active = False
                 self.alarm_widget.setVisible(False)
                 self.alarm_timer.stop()
@@ -584,14 +605,14 @@ class LiveMonitorTab(QtWidgets.QWidget, PlotNavigationMixin):
                 
         return msg
 
-
     def update_average_bpm_line(self):
-        """Update the average BPM reference line."""
+        """Update the average BPM reference line using SessionInfoFormatter."""
         if len(self.visual_bpm_data) > 1:
-            # Calculate average excluding zero values
-            valid_bpm = [bpm for bpm in self.visual_bpm_data if bpm > 0]
-            if valid_bpm:
-                avg_bpm = np.mean(valid_bpm)
+            # Use SessionInfoFormatter to calculate statistics
+            stats = SessionInfoFormatter.calculate_session_stats(self.visual_bpm_data)
+            
+            if stats['count'] > 0:
+                avg_bpm = stats['avg']
                 self.avg_bpm_display.setText(f"Avg: {avg_bpm:.1f} BPM")
                 self.avg_bpm_line.setValue(avg_bpm)
                 self.avg_bpm_line.setVisible(True)
@@ -607,7 +628,7 @@ class LiveMonitorTab(QtWidgets.QWidget, PlotNavigationMixin):
         self.rr_plot.setVisible(show_rr_plot)
     
     def toggle_legends(self, state):
-        """Toggle legends using PlotStyleHelper."""
+        """Toggle legends using PlotStyleHelper for consistency."""
         show_legends = (state == QtCore.Qt.Checked)
         
         PlotStyleHelper.toggle_legend_visibility(self.bpm_legend, show_legends)

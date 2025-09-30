@@ -108,3 +108,16 @@ class SignalProcessingUtils:
         metrics['sd_ratio'] = sd1 / sd2 if sd2 > 0 else 0
         
         return metrics
+
+    @staticmethod
+    def remove_duplicate_peaks(peak_indices):
+        """
+        Remove duplicate peak indices that might cause NeuroKit warnings.
+        
+        Args:
+            peak_indices: Array of peak sample indices
+            
+        Returns:
+            numpy array: Unique peak indices in sorted order
+        """
+        return np.unique(peak_indices)

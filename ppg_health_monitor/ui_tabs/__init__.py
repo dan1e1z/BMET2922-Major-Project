@@ -1,4 +1,13 @@
-from ui_tabs.live_monitor_tab import LiveMonitorTab
-from ui_tabs.account_tab import AccountTab
-from ui_tabs.history_tab import HistoryTab
-from ui_tabs.research_tab import ResearchTab
+"""UI tabs for the application."""
+
+from .account_tab import AccountTab
+from .history_tab import HistoryTab
+from .live_monitor_tab import LiveMonitorTab
+from .research_tab import ResearchTab
+
+__all__ = [
+    'AccountTab',
+    'HistoryTab',
+    'LiveMonitorTab',
+    'ResearchTab',
+]
