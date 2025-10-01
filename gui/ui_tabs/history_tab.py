@@ -1,11 +1,11 @@
 from PyQt5 import QtWidgets, QtCore, QtGui
 import pyqtgraph as pg
 import numpy as np
-from datetime import datetime
 
-from ppg_health_monitor.utils.plot_style_helper import PlotStyleHelper
-from ppg_health_monitor.utils.session_info_formatter import SessionInfoFormatter
-
+from gui.utils import (
+    PlotStyleHelper,
+    SessionInfoFormatter
+)
 
 class HistoryTab(QtWidgets.QWidget):
     """

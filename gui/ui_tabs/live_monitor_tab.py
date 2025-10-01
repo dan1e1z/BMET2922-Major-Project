@@ -5,7 +5,7 @@ from datetime import datetime
 from scipy import signal
 from collections import deque
 
-from ppg_health_monitor.utils import (
+from gui.utils import (
     PlotNavigationMixin,
     PlotStyleHelper,
     SignalProcessingUtils,

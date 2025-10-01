@@ -1,7 +1,7 @@
 import sys
 from PyQt5 import QtWidgets
 
-from ppg_health_monitor.main_window import MainWindow
+from gui.main_window import MainWindow
 
 if __name__ == "__main__":
     # Create the QApplication instance.

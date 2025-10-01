@@ -7,11 +7,13 @@ import pandas as pd
 import os
 from datetime import datetime
 
-from ppg_health_monitor.utils.plot_style_helper import PlotStyleHelper
-from ppg_health_monitor.utils.plot_navigation_mixin import PlotNavigationMixin
-from ppg_health_monitor.utils.data_validation_utils import DataValidationUtils
-from ppg_health_monitor.utils.signal_processing_utils import SignalProcessingUtils
-from ppg_health_monitor.utils.session_info_formatter import SessionInfoFormatter
+from gui.utils import (
+    PlotStyleHelper,
+    PlotNavigationMixin,
+    DataValidationUtils,
+    SignalProcessingUtils,
+    SessionInfoFormatter
+)
 
 class ResearchTab(QtWidgets.QWidget, PlotNavigationMixin):
     """Advanced research tab for PPG signal analysis with comprehensive filtering and HRV analysis."""

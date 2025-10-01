@@ -3,18 +3,18 @@ from PyQt5 import QtWidgets, QtCore, QtGui
 from datetime import datetime
 import numpy as np
 
-from ppg_health_monitor.ui_tabs import (
+from gui.ui_tabs import (
     AccountTab,
     HistoryTab,
     LiveMonitorTab,
     ResearchTab
 )
-from ppg_health_monitor.ui_components import (
+from gui.ui_components import (
     BluetoothConnectionStatus,
     SystemLog,
     UserManager
 )
-from ppg_health_monitor.bluetooth_monitor import BluetoothMonitor
+from gui.bluetooth_monitor import BluetoothMonitor
 
 
 class MainWindow(QtWidgets.QMainWindow):
