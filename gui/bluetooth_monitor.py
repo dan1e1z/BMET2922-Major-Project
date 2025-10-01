@@ -45,7 +45,8 @@ class BluetoothMonitor(QtCore.QObject):
                 print("**************************************")
                 self.last_packet_time = time.time()
                 return True
-            except serial.SerialException:
+            except serial.SerialException as e:
+                print(f"Failed to open port {self.port}: {e}")
                 pass
 
     def reconnect(self):
@@ -53,6 +54,7 @@ class BluetoothMonitor(QtCore.QObject):
         start = time.time()
         print(f"Closing port {self.port}...")
         self.serialPort.close()
+        # time.sleep(20) 
         self.connect()
         print(f"Reconnected in {time.time() - start:.2f} seconds.")
 
