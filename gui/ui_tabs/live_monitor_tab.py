@@ -510,21 +510,73 @@ class LiveMonitorTab(QtWidgets.QWidget, PlotNavigationMixin):
         self.update_slider()
 
     def update_plot_view(self):
-        """Update plot view using PlotNavigationMixin method."""
+        """
+        Update plot view:
+        - Sync x-axis range across plots based on visible window.
+        - Auto-scale y-axis using PlotStyleHelper with clinical ranges where applicable:
+            * BPM: 30–220 bpm
+            * IBI: 250–2000 ms
+            * RR: 0–50 breaths/min
+            * PPG: dynamic scaling (no limits)
+        """
         if not self.time_ppg_data:
             return
-        
+
         max_time = self.time_ppg_data[-1]
         start_time, end_time = self.get_plot_view_range(max_time)
-        
+        x_range = (start_time, end_time)
+
+        # BPM plot
         self.bpm_plot.setXRange(start_time, end_time, padding=0)
+        if self.bpm_plot.isVisible() and self.time_bpm_data and self.visual_bpm_data:
+            PlotStyleHelper.auto_scale_y_axis(
+                self.bpm_plot,
+                self.time_bpm_data,
+                self.visual_bpm_data,
+                x_range,
+                min_limit=30,
+                max_limit=220,
+                scale_mode="auto"
+            )
+
+        # Raw PPG plot
         self.raw_ppg_plot.setXRange(start_time, end_time, padding=0)
-        
-        if self.ibi_plot.isVisible():
-            self.ibi_plot.setXRange(start_time, end_time, padding=0)
-        
-        if self.rr_plot.isVisible():
-            self.rr_plot.setXRange(start_time, end_time, padding=0)
+        if self.raw_ppg_plot.isVisible() and self.time_ppg_data and self.visual_ppg_data:
+            PlotStyleHelper.auto_scale_y_axis(
+                self.raw_ppg_plot,
+                self.time_ppg_data,
+                self.visual_ppg_data,
+                x_range,
+                scale_mode="auto" 
+            )
+
+        # IBI plot
+        self.ibi_plot.setXRange(start_time, end_time, padding=0)
+        if self.ibi_plot.isVisible() and self.ibi_times and self.ibi_data:
+            PlotStyleHelper.auto_scale_y_axis(
+                self.ibi_plot,
+                list(self.ibi_times),
+                list(self.ibi_data),
+                x_range,
+                min_limit=250,
+                max_limit=2000,
+                scale_mode="auto"
+            )
+
+        # RR plot
+        self.rr_plot.setXRange(start_time, end_time, padding=0)
+        if self.rr_plot.isVisible() and self.rr_times and self.rr_data:
+            PlotStyleHelper.auto_scale_y_axis(
+                self.rr_plot,
+                list(self.rr_times),
+                list(self.rr_data),
+                x_range,
+                min_limit=0,
+                max_limit=50,
+                scale_mode="auto"
+            )
+
+
 
     def update_slider(self):
         """Update slider using PlotNavigationMixin method."""
