@@ -1,436 +1,415 @@
 from PyQt5 import QtWidgets, QtCore, QtGui
 import pyqtgraph as pg
 import numpy as np
+from datetime import datetime
 
 from gui.utils import (
     PlotStyleHelper,
     SessionInfoFormatter
 )
 
+
 class HistoryTab(QtWidgets.QWidget):
     """
-    Tab widget for displaying user's health history, session stats, and BPM distribution analysis.
+    Modernised history tab with tabbed navigation, filtering, and enhanced UX.
     """
+    BPM_LOW_ABNORMAL = 40
+    BPM_LOW_NORMAL = 60
+    BPM_HIGH_NORMAL = 100
+    BPM_HIGH_ABNORMAL = 200
+
+    SORT_OPTIONS = {
+        "Date (Newest)": (lambda s: s["start"], True),
+        "Date (Oldest)": (lambda s: s["start"], False),
+        "Avg BPM (High-Low)": (lambda s: s.get("avg_bpm", 0), True),
+        "Avg BPM (Low-High)": (lambda s: s.get("avg_bpm", 0), False),
+        "Duration (Long-Short)": (lambda s: s.get("duration_minutes", 0), True),
+        "Duration (Short-Long)": (lambda s: s.get("duration_minutes", 0), False),
+    }
+
     def __init__(self):
-        """
-        Initialize the HistoryTab and set up the UI.
-        """
         super().__init__()
         self.current_user = None
         self.user_manager = None
+        self.all_sessions = []  # Store a clean copy of the user's history
         self.setup_ui()
 
     def setup_ui(self):
-        """
-        Set up the main layout, including title, summary, session history, and plot widgets inside a scroll area.
-        """
         layout = QtWidgets.QVBoxLayout()
 
-        # Title
-        title = QtWidgets.QLabel("Health History")
+        title = QtWidgets.QLabel("Health Monitor")
         title.setAlignment(QtCore.Qt.AlignCenter)
-        title.setStyleSheet("font-size: 18px; font-weight: bold; margin: 10px;")
+        title.setStyleSheet("font-size: 20px; font-weight: bold; margin: 12px;")
         layout.addWidget(title)
 
-        # Create scroll area for content
+        self.tabs = QtWidgets.QTabWidget()
+
+        # Overview tab
+        self.overview_tab = QtWidgets.QWidget()
         scroll = QtWidgets.QScrollArea()
         scroll_widget = QtWidgets.QWidget()
         scroll_layout = QtWidgets.QVBoxLayout()
 
-        # Summary stats
         self.summary_widget = self.create_summary_widget()
         scroll_layout.addWidget(self.summary_widget)
 
-        # Session history
-        self.history_widget = self.create_history_widget()
-        scroll_layout.addWidget(self.history_widget)
-        
-        # Histogram plot
         self.plot_widget = self.create_plot_widget()
         scroll_layout.addWidget(self.plot_widget)
-        
+
         scroll_widget.setLayout(scroll_layout)
         scroll.setWidget(scroll_widget)
         scroll.setWidgetResizable(True)
-        layout.addWidget(scroll)
-        
+
+        overview_layout = QtWidgets.QVBoxLayout()
+        overview_layout.addWidget(scroll)
+        self.overview_tab.setLayout(overview_layout)
+        self.tabs.addTab(self.overview_tab, "Overview")
+
+        # History tab
+        self.history_tab = QtWidgets.QWidget()
+        history_layout = QtWidgets.QHBoxLayout()
+        self.filter_widget = self.create_filter_widget()
+        self.history_widget = self.create_history_widget()
+        history_layout.addWidget(self.filter_widget, stretch=0)
+        history_layout.addWidget(self.history_widget, stretch=1)
+        self.history_tab.setLayout(history_layout)
+        self.tabs.addTab(self.history_tab, "History")
+
+        layout.addWidget(self.tabs)
         self.setLayout(layout)
-    
+
     def create_summary_widget(self):
-        """
-        Create and return a widget displaying the user's health summary.
-        """
         widget = QtWidgets.QGroupBox("Health Summary")
-        
         layout = QtWidgets.QVBoxLayout()
-        
         self.summary_label = QtWidgets.QLabel("Please log in to view your health summary")
         self.summary_label.setStyleSheet("padding: 15px; background-color: #f8f9fa; border-radius: 5px;")
-
         layout.addWidget(self.summary_label)
-        
         widget.setLayout(layout)
         return widget
-    
+
+    def create_filter_widget(self):
+        widget = QtWidgets.QGroupBox("Filter Sessions")
+        layout = QtWidgets.QVBoxLayout()
+        layout.setSpacing(12)
+
+        def add_spinbox_row(label_text, min_val, max_val, default, callback):
+            row = QtWidgets.QHBoxLayout()
+            row.addWidget(QtWidgets.QLabel(label_text))
+            spin = QtWidgets.QSpinBox()
+            spin.setRange(min_val, max_val)
+            spin.setValue(default)
+            spin.valueChanged.connect(callback)
+            row.addWidget(spin)
+            return row, spin
+
+        # Date Range
+        layout.addWidget(QtWidgets.QLabel("<b>Date Range</b>", textFormat=QtCore.Qt.RichText))
+        date_row = QtWidgets.QHBoxLayout()
+        self.from_date = QtWidgets.QDateEdit(calendarPopup=True)
+        self.from_date.setDate(QtCore.QDate.currentDate().addMonths(-1))
+        self.from_date.setDisplayFormat("yyyy-MM-dd")
+        self.from_date.dateChanged.connect(self.apply_filters)
+        self.to_date = QtWidgets.QDateEdit(calendarPopup=True)
+        self.to_date.setDate(QtCore.QDate.currentDate())
+        self.to_date.setDisplayFormat("yyyy-MM-dd")
+        self.to_date.dateChanged.connect(self.apply_filters)
+        for lbl, widget_item in [("From:", self.from_date), ("To:", self.to_date)]:
+            date_row.addWidget(QtWidgets.QLabel(lbl))
+            date_row.addWidget(widget_item)
+            date_row.addSpacing(8)
+        layout.addLayout(date_row)
+
+        # BPM Range
+        layout.addWidget(QtWidgets.QLabel("<b>BPM Range</b>", textFormat=QtCore.Qt.RichText))
+        bpm_row = QtWidgets.QHBoxLayout()
+        _, self.min_bpm_spin = add_spinbox_row("Min:", 30, 250, self.BPM_LOW_ABNORMAL, self.apply_filters)
+        bpm_row.addLayout(_)
+        bpm_row.addSpacing(8)
+        _, self.max_bpm_spin = add_spinbox_row("Max:", 30, 250, self.BPM_HIGH_ABNORMAL, self.apply_filters)
+        bpm_row.addLayout(_)
+        layout.addLayout(bpm_row)
+
+        # Duration
+        layout.addWidget(QtWidgets.QLabel("<b>Session Duration (min)</b>", textFormat=QtCore.Qt.RichText))
+        dur_row = QtWidgets.QHBoxLayout()
+        _, self.min_duration_spin = add_spinbox_row("Min:", 0, 600, 0, self.apply_filters)
+        dur_row.addLayout(_)
+        dur_row.addSpacing(8)
+        _, self.max_duration_spin = add_spinbox_row("Max:", 1, 600, 600, self.apply_filters)
+        dur_row.addLayout(_)
+        layout.addLayout(dur_row)
+
+        # Other Filters
+        layout.addWidget(QtWidgets.QLabel("<b>Other Filters</b>", textFormat=QtCore.Qt.RichText))
+        self.abnormal_only_checkbox = QtWidgets.QCheckBox("Show only sessions with abnormal readings")
+        self.abnormal_only_checkbox.stateChanged.connect(self.apply_filters)
+        layout.addWidget(self.abnormal_only_checkbox)
+
+        sort_row = QtWidgets.QHBoxLayout()
+        sort_row.addWidget(QtWidgets.QLabel("Sort By:"))
+        self.sort_by_combo = QtWidgets.QComboBox()
+        self.sort_by_combo.addItems(self.SORT_OPTIONS.keys())
+        self.sort_by_combo.currentIndexChanged.connect(self.apply_filters)
+        sort_row.addWidget(self.sort_by_combo)
+        layout.addLayout(sort_row)
+
+        layout.addStretch()
+        self.reset_button = QtWidgets.QPushButton("Reset Filters")
+        self.reset_button.clicked.connect(self.reset_filters)
+        layout.addWidget(self.reset_button, alignment=QtCore.Qt.AlignLeft)
+
+        widget.setLayout(layout)
+        return widget
+
     def create_history_widget(self):
-        """
-        Create and return a widget displaying the user's session history in a table.
-        Columns are set to equal width for clarity.
-        """
         widget = QtWidgets.QGroupBox("Session History")
         layout = QtWidgets.QVBoxLayout()
-
         self.history_table = QtWidgets.QTableWidget()
-        self.history_table.setColumnCount(8)
-        self.history_table.setHorizontalHeaderLabels([
-            "Date", "Duration", "Avg BPM", "Min BPM", "Max BPM",
-            "Abnormal Readings", "Low Thresh", "High Thresh"
-        ])
-
+        headers = ["Date", "Duration", "Avg BPM", "Min BPM", "Max BPM", "Abnormal Readings", "Low Threshold", "High Threshold"]
+        self.history_table.setColumnCount(len(headers))
+        self.history_table.setHorizontalHeaderLabels(headers)
         header = self.history_table.horizontalHeader()
         header.setStretchLastSection(True)
-        for i in range(self.history_table.columnCount()):
+        for i in range(len(headers)):
             header.setSectionResizeMode(i, QtWidgets.QHeaderView.Stretch)
-
         layout.addWidget(self.history_table)
         widget.setLayout(layout)
         return widget
-    
+
     def create_plot_widget(self):
-        """
-        Create and return a widget displaying a histogram plot of BPM distribution and analysis text.
-        """
         widget = QtWidgets.QGroupBox("BPM Distribution Analysis")
         layout = QtWidgets.QVBoxLayout()
-        
         self.plot = pg.PlotWidget()
         PlotStyleHelper.configure_plot_widget(
-            self.plot,
-            title="",
-            x_label="BPM Range",
-            x_units="",
-            y_label="Frequency",
-            y_units="",
-            grid=True,
-            mouse_enabled=False,
-            menu_enabled=False
+            self.plot, title='', x_label="BPM Range", y_label="Frequency",
+            grid=True, mouse_enabled=False, menu_enabled=False
         )
         layout.addWidget(self.plot)
-        
-        # Analysis text
         self.analysis_label = QtWidgets.QLabel("")
-        self.analysis_label.setStyleSheet(
-            "padding: 10px; background-color: #e8f4f8; border-radius: 5px; margin: 5px;"
-        )
+        self.analysis_label.setStyleSheet("padding: 10px; background-color: #e8f4f8; border-radius: 5px; margin: 5px;")
         self.analysis_label.setWordWrap(True)
         layout.addWidget(self.analysis_label)
-        
         widget.setLayout(layout)
         return widget
     
-    def start_session(self, username, user_manager):
-        """
-        Start a new session for the given user.
-        Loads user data and updates the UI components accordingly.
+    @staticmethod
+    def _parse_session_date(start_date):
+        """Helper to consistently parse date from session data."""
+        return datetime.fromisoformat(str(start_date).replace('Z', '+00:00')).date()
 
-        Args:
-            username (str): The username of the logged-in user.
-            user_manager (UserManager): The user manager instance for data access.
-        """
+    def apply_filters(self):
+        if not self.all_sessions:
+            self.update_history_table([])
+            return
+
+        from_dt = self.from_date.date().toPyDate()
+        to_dt = self.to_date.date().toPyDate()
+        min_bpm, max_bpm = self.min_bpm_spin.value(), self.max_bpm_spin.value()
+        min_duration, max_duration = self.min_duration_spin.value(), self.max_duration_spin.value()
+        abnormal_only = self.abnormal_only_checkbox.isChecked()
+        sort_by = self.sort_by_combo.currentText()
+
+        filtered = []
+        for session in self.all_sessions:
+            session_date = self._parse_session_date(session.get("start"))
+            if not session_date or not (from_dt <= session_date <= to_dt):
+                continue
+            
+            avg_bpm = session.get("avg_bpm", 0)
+            if not (min_bpm <= avg_bpm <= max_bpm):
+                continue
+            
+            duration = session.get("duration_minutes", 0)
+            if not (min_duration <= duration <= max_duration):
+                continue
+            
+            if abnormal_only and session.get("abnormal_low", 0) == 0 and session.get("abnormal_high", 0) == 0:
+                continue
+            
+            filtered.append(session)
+
+        if sort_by in self.SORT_OPTIONS:
+            key, reverse = self.SORT_OPTIONS[sort_by]
+            filtered.sort(key=key, reverse=reverse)
+
+        self.update_history_table(filtered)
+
+    def reset_filters(self):
+        self.from_date.setDate(QtCore.QDate.currentDate().addMonths(-1))
+        self.to_date.setDate(QtCore.QDate.currentDate())
+        self.min_bpm_spin.setValue(self.BPM_LOW_ABNORMAL)
+        self.max_bpm_spin.setValue(self.BPM_HIGH_ABNORMAL)
+        self.min_duration_spin.setValue(0)
+        self.max_duration_spin.setValue(600)
+        self.abnormal_only_checkbox.setChecked(False)
+        self.sort_by_combo.setCurrentIndex(0)
+        
+        self.apply_filters()
+
+    def start_session(self, username, user_manager):
         self.current_user = username
         self.user_manager = user_manager
+        
+        user_data = self.user_manager.users.get(self.current_user, {})
+        # Store a clean, pre-processed copy of the history
+        self.all_sessions = user_data.get("history", [])
+        
         self.update_history_view()
+        self.reset_filters()
 
     def update_history_view(self):
-        """Update all history views when user data changes."""
-        # Get logged in user history
-        user_data = self.user_manager.users[self.current_user]
-        history = user_data.get("history", [])
-
-        # User has no history - first session
-        if not history:
-            self.summary_label.setText(
-                "No session data available yet. Start recording to build your health history!"
-            )
+        if not self.all_sessions:
+            self.summary_label.setText("No session data available yet. Start recording to build your health history!")
             self.history_table.setRowCount(0)
             self.plot.clear()
             self.analysis_label.setText("")
             return
         
-        # Update all components
-        self.update_summary(user_data, history)
-        self.update_history_table(history)
-        self.update_plot(history)
+        user_data = self.user_manager.users[self.current_user]
+        self.update_summary(user_data, self.all_sessions)
+        self.update_plot(self.all_sessions)
+        self.apply_filters()
 
     def update_summary(self, user_data, history):
-        """Update the health summary using SessionInfoFormatter for consistency."""
         total_sessions = len(history)
         total_duration = sum(session.get("duration_minutes", 0) for session in history)
-        
-        # Collect BPM data and abnormal counts
-        all_bpms = []
-        all_low_count = 0
-        all_high_count = 0
-        
-        for session in history:
-            avg_bpm = session.get("avg_bpm", 0)
-            if avg_bpm > 0:
-                all_bpms.append(avg_bpm)
-            all_low_count += session.get("abnormal_low", 0)
-            all_high_count += session.get("abnormal_high", 0)
-        
-        if all_bpms:
-            # Calculate statistics
-            stats = SessionInfoFormatter.calculate_session_stats(all_bpms)
-            overall_avg = stats['avg']
-            overall_min = stats['min']
-            overall_max = stats['max']
-            
-            # Get health status
-            health_status, status_color = SessionInfoFormatter.format_bpm_status(
-                overall_avg,
-                low_threshold=40,
-                high_threshold=200
-            )
-            
-            # Format duration
-            total_duration_formatted = SessionInfoFormatter.format_duration(total_duration)
-            avg_session_duration = SessionInfoFormatter.format_duration(total_duration / total_sessions)
-            
-            summary_text = f"""
-                <div style='line-height: 1.6;'>
-                <b style='font-size: 14px; color: {status_color};'>Overall Health Status: {health_status}</b><br><br>
-                
-                <b>📊 Session Statistics:</b><br>
-                • Total Sessions: {total_sessions}<br>
-                • Total Recording Time: {total_duration_formatted}<br>
-                • Average Session Length: {avg_session_duration}<br><br>
-                
-                <b>❤️ Heart Rate Metrics:</b><br>
-                • Average BPM: {overall_avg:.1f}<br>
-                • Range: {overall_min:.1f} - {overall_max:.1f} BPM<br>
-                
-                <b>⚠️ Abnormal Readings:</b><br>
-                • Low Readings (&lt;40 BPM): {all_low_count}<br>
-                • High Readings (&gt;200 BPM): {all_high_count}<br>
-                • Total Abnormal: {all_low_count + all_high_count}
-                </div>
-                """
-            
-            # Add recent trend analysis
-            if len(history) >= 2:
-                recent_sessions = history[-3:]
-                older_sessions = history[:-3] if len(history) > 3 else history[:1]
-                
-                recent_bpms = [s.get("avg_bpm", 0) for s in recent_sessions if s.get("avg_bpm", 0) > 0]
-                older_bpms = [s.get("avg_bpm", 0) for s in older_sessions if s.get("avg_bpm", 0) > 0]
-                
-                if recent_bpms and older_bpms:
-                    recent_avg = np.mean(recent_bpms)
-                    older_avg = np.mean(older_bpms)
-                    
-                    trend = "stable"
-                    if recent_avg > older_avg + 5:
-                        trend = "increasing"
-                    elif recent_avg < older_avg - 5:
-                        trend = "decreasing"
-                    
-                    summary_text += (
-                        f"<br><b>Recent Trend:</b> Your heart rate appears to be {trend} "
-                        f"compared to earlier sessions."
-                    )
-        else:
-            summary_text = "No valid BPM data recorded yet."
-        
+        all_bpms = [s.get("avg_bpm", 0) for s in history if s.get("avg_bpm", 0) > 0]
+        all_low_count = sum(s.get("abnormal_low", 0) for s in history)
+        all_high_count = sum(s.get("abnormal_high", 0) for s in history)
+
+        if not all_bpms:
+            self.summary_label.setText("No valid BPM data recorded yet.")
+            return
+
+        stats = SessionInfoFormatter.calculate_session_stats(all_bpms)
+        overall_avg, overall_min, overall_max = stats['avg'], stats['min'], stats['max']
+        health_status, status_color = SessionInfoFormatter.format_bpm_status(overall_avg, self.BPM_LOW_ABNORMAL, self.BPM_HIGH_ABNORMAL)
+        total_duration_formatted = SessionInfoFormatter.format_duration(total_duration)
+        avg_session_duration = SessionInfoFormatter.format_duration(total_duration / total_sessions) if total_sessions > 0 else "N/A"
+
+        summary_text = f"""
+            <div style='line-height: 1.6;'>
+            <b style='font-size: 14px; color: {status_color};'>Overall Health Status: {health_status}</b><br><br>
+            <b>📊 Session Statistics:</b><br>
+            • Total Sessions: {total_sessions}<br>
+            • Total Recording Time: {total_duration_formatted}<br>
+            • Average Session Length: {avg_session_duration}<br><br>
+            <b>❤️ Heart Rate Metrics:</b><br>
+            • Average BPM: {overall_avg:.1f}<br>
+            • Range: {overall_min:.1f} - {overall_max:.1f} BPM<br>
+            <b>⚠️ Abnormal Readings:</b><br>
+            • Low Readings (<{self.BPM_LOW_ABNORMAL} BPM): {all_low_count}<br>
+            • High Readings (>{self.BPM_HIGH_ABNORMAL} BPM): {all_high_count}<br>
+            • Total Abnormal: {all_low_count + all_high_count}
+            </div>
+            """
         self.summary_label.setText(summary_text)
-    
+
     def update_history_table(self, history):
-        """Update the session history table using SessionInfoFormatter for date formatting."""
         self.history_table.setRowCount(len(history))
-
-        for i, session in enumerate(reversed(history)):
-            # Format date
-            date_str = SessionInfoFormatter.format_datetime(session["start"])
+        for i, session in enumerate(history):
+            values = [
+                SessionInfoFormatter.format_datetime(session["start"]),
+                SessionInfoFormatter.format_duration(session.get("duration_minutes", 0)),
+                f"{session.get('avg_bpm', 0):.1f}",
+                f"{session.get('min_bpm', 0):.1f}",
+                f"{session.get('max_bpm', 0):.1f}",
+                f"Low: {session.get('abnormal_low', 0)}, High: {session.get('abnormal_high', 0)}",
+                str(session.get("bpm_low_threshold", self.BPM_LOW_ABNORMAL)),
+                str(session.get("bpm_high_threshold", self.BPM_HIGH_ABNORMAL))
+            ]
+            for col, val in enumerate(values):
+                self.history_table.setItem(i, col, QtWidgets.QTableWidgetItem(val))
             
-            # Get session data
-            duration = session.get("duration_minutes", 0)
-            avg_bpm = session.get("avg_bpm", 0)
-            min_bpm = session.get("min_bpm", 0)
-            max_bpm = session.get("max_bpm", 0)
-
-            abnormal_low = session.get("abnormal_low", 0)
-            abnormal_high = session.get("abnormal_high", 0)
-            abnormal_text = f"Low: {abnormal_low}, High: {abnormal_high}"
-
-            low_thresh = session.get("bpm_low_threshold", 40)
-            high_thresh = session.get("bpm_high_threshold", 200)
-
-            # Format duration for display
-            duration_str = SessionInfoFormatter.format_duration(duration)
-
-            # Set table items
-            self.history_table.setItem(i, 0, QtWidgets.QTableWidgetItem(date_str))
-            self.history_table.setItem(i, 1, QtWidgets.QTableWidgetItem(duration_str))
-            self.history_table.setItem(i, 2, QtWidgets.QTableWidgetItem(f"{avg_bpm:.1f}"))
-            self.history_table.setItem(i, 3, QtWidgets.QTableWidgetItem(f"{min_bpm:.1f}"))
-            self.history_table.setItem(i, 4, QtWidgets.QTableWidgetItem(f"{max_bpm:.1f}"))
-            self.history_table.setItem(i, 5, QtWidgets.QTableWidgetItem(abnormal_text))
-            self.history_table.setItem(i, 6, QtWidgets.QTableWidgetItem(str(low_thresh)))
-            self.history_table.setItem(i, 7, QtWidgets.QTableWidgetItem(str(high_thresh)))
-
-            # Highlight rows with abnormal readings
-            if abnormal_low > 0 or abnormal_high > 0:
-                for col in range(8):
+            if session.get("abnormal_low", 0) > 0 or session.get("abnormal_high", 0) > 0:
+                for col in range(self.history_table.columnCount()):
                     item = self.history_table.item(i, col)
                     if item:
                         item.setBackground(QtGui.QColor(255, 235, 235))
-    
+
     def update_plot(self, history):
-        """Update the BPM distribution histogram plot."""
         self.plot.clear()
-        
-        # Collect all BPM data
-        all_bpms = []
-        for session in history:
-            avg_bpm = session.get("avg_bpm", 0)
-            if avg_bpm > 0:
-                all_bpms.append(avg_bpm)
-        
+        all_bpms = [s.get("avg_bpm", 0) for s in history if s.get("avg_bpm", 0) > 0]
         if not all_bpms:
             self.analysis_label.setText("No BPM data available for analysis.")
             return
-        
-        # Create histogram data
+
         hist, bins = np.histogram(all_bpms, bins=20)
-        
-        # Create x positions for bars (center of each bin)
         x_pos = np.arange(len(hist))
-        
-        # Create labels for x-axis (BPM ranges)
         x_labels = [f"{bins[i]:.0f}-{bins[i+1]:.0f}" for i in range(len(bins)-1)]
         
-        # Create bar colors based on BPM ranges
-        bar_colors = self._get_bar_colors(bins)
-        
-        # Create the bar plot
-        bar_plot = pg.BarGraphItem(
-            x=x_pos, 
-            height=hist, 
-            width=0.8, 
-            brushes=bar_colors,
-            pen={'color': 'black', 'width': 1}
+        brushes = self._get_bar_colors(bins)
+        bar_graph = pg.BarGraphItem(
+            x=x_pos, height=hist, width=0.8,
+            brushes=brushes, pen={'color': 'black', 'width': 1}
         )
-        self.plot.addItem(bar_plot)
-        
-        # Update plot
+        self.plot.addItem(bar_graph)
+
         PlotStyleHelper.configure_plot_widget(
             self.plot,
             title='Distribution of Average BPM Across Sessions',
-            x_label="BPM Range",
-            x_units="", 
-            y_label="Number of Sessions",
-            y_units="",
-            grid=True, 
-            mouse_enabled=False,
-            menu_enabled=False   
+            x_label="BPM Range", y_label="Number of Sessions",
+            grid=True, mouse_enabled=False, menu_enabled=False
         )
         
-        # Set x-axis ticks and labels
-        x_ticks = [(i, label) for i, label in enumerate(x_labels)]
-        self.plot.getAxis('bottom').setTicks([x_ticks])
-        
-        # Set axis ranges to prevent weird scaling
+        bottom_axis = self.plot.getAxis('bottom')
+        bottom_axis.setTicks([[(i, label) for i, label in enumerate(x_labels)]])
         self.plot.setXRange(-0.5, len(hist) - 0.5)
         self.plot.setYRange(0, max(hist) * 1.1 if max(hist) > 0 else 1)
-        
-        # Generate and display analysis
         self._update_analysis(all_bpms)
-    
+
     def _get_bar_colors(self, bins):
-        """
-        Generate color array for histogram bars based on BPM health zones.
-        
-        Args:
-            bins: Histogram bin edges
-            
-        Returns:
-            list: List of color tuples (R, G, B, A)
-        """
-        bar_colors = []
+        colors = []
         for i in range(len(bins) - 1):
-            bin_center = (bins[i] + bins[i+1]) / 2
-            if bin_center < 40:
-                bar_colors.append((255, 0, 0, 150))      # Red - Very low
-            elif bin_center < 60:
-                bar_colors.append((255, 165, 0, 150))    # Orange - Low
-            elif bin_center <= 100:
-                bar_colors.append((0, 128, 0, 150))      # Green - Normal
-            elif bin_center <= 200:
-                bar_colors.append((255, 165, 0, 150))    # Orange - High
+            center = (bins[i] + bins[i+1]) / 2
+            if center < self.BPM_LOW_ABNORMAL:
+                colors.append((255, 0, 0, 150))          # Red
+            elif center < self.BPM_LOW_NORMAL:
+                colors.append((255, 165, 0, 150))     # Orange
+            elif center <= self.BPM_HIGH_NORMAL:
+                colors.append((0, 128, 0, 150))        # Green
+            elif center <= self.BPM_HIGH_ABNORMAL:
+                colors.append((255, 165, 0, 150))     # Orange
             else:
-                bar_colors.append((255, 0, 0, 150))      # Red - Very high
-        return bar_colors
-    
+                colors.append((255, 0, 0, 150))          # Red
+        return colors
+
     def _update_analysis(self, all_bpms):
-        """
-        Generate and display BPM distribution analysis using SessionInfoFormatter.
-        
-        Args:
-            all_bpms: List of all BPM values from sessions
-        """
-        # Calculate statistics
         stats = SessionInfoFormatter.calculate_session_stats(all_bpms)
+        avg_bpm, std_bpm, min_bpm, max_bpm = stats['avg'], stats['std'], stats['min'], stats['max']
         
-        avg_bpm = stats['avg']
-        std_bpm = stats['std']
-        min_bpm = stats['min']
-        max_bpm = stats['max']
-        
-        # Count readings in different zones
-        low_count = sum(1 for bpm in all_bpms if bpm < 40)
-        high_count = sum(1 for bpm in all_bpms if bpm > 200)
-        normal_count = sum(1 for bpm in all_bpms if 60 <= bpm <= 100)
-        
+        low_count = sum(1 for bpm in all_bpms if bpm < self.BPM_LOW_ABNORMAL)
+        high_count = sum(1 for bpm in all_bpms if bpm > self.BPM_HIGH_ABNORMAL)
+        normal_count = sum(1 for bpm in all_bpms if self.BPM_LOW_NORMAL <= bpm <= self.BPM_HIGH_NORMAL)
+
+        total_analyzed = len(all_bpms)
         analysis_text = f"""
-        <b>BPM Distribution Analysis:</b><br>
-        • Total Sessions Analyzed: {len(all_bpms)}<br>
-        • Average BPM: {avg_bpm:.1f} ± {std_bpm:.1f}<br>
-        • Range: {min_bpm:.1f} - {max_bpm:.1f} BPM<br>
-        <br>
-        <b>Health Insights:</b><br>
-        """
-        
-        # Add health recommendations based on normal range percentage
-        normal_percentage = normal_count / len(all_bpms)
-        if normal_percentage > 0.8:
-            analysis_text += "• Excellent: Most of your readings are in the normal range!<br>"
-        elif normal_percentage > 0.6:
-            analysis_text += "• Good: Majority of your readings are normal. Monitor any patterns.<br>"
-        else:
-            analysis_text += "• Attention: Consider consulting a healthcare provider about your readings.<br>"
-        
-        # Add specific warnings for abnormal readings
+            <b>BPM Distribution Analysis:</b><br>
+            • Total Sessions Analyzed: {total_analyzed}<br>
+            • Average BPM: {avg_bpm:.1f} ± {std_bpm:.1f}<br>
+            • Range: {min_bpm:.1f} - {max_bpm:.1f} BPM<br><br>
+            <b>Health Insights:</b><br>
+            """
+
+        if total_analyzed > 0:
+            normal_percentage = normal_count / total_analyzed
+            if normal_percentage > 0.8:
+                analysis_text += "• Excellent: Most readings are in the normal range!<br>"
+            elif normal_percentage > 0.6:
+                analysis_text += "• Good: Majority are normal. Monitor patterns.<br>"
+            else:
+                analysis_text += "• Attention: Consider consulting a healthcare provider.<br>"
+
         if low_count > 0:
-            analysis_text += (
-                f"• You have {low_count} readings below 40 BPM - "
-                f"this may indicate bradycardia.<br>"
-            )
-        
+            analysis_text += f"• {low_count} readings below {self.BPM_LOW_ABNORMAL} BPM - may indicate bradycardia.<br>"
         if high_count > 0:
-            analysis_text += (
-                f"• You have {high_count} readings above 200 BPM - "
-                f"this may indicate tachycardia.<br>"
-            )
-        
-        # Variability assessment
+            analysis_text += f"• {high_count} readings above {self.BPM_HIGH_ABNORMAL} BPM - may indicate tachycardia.<br>"
+
         if std_bpm < 5:
-            analysis_text += "• Your heart rate is very consistent across sessions.<br>"
+            analysis_text += "• Heart rate is very consistent.<br>"
         elif std_bpm < 15:
-            analysis_text += "• Your heart rate shows normal variability across sessions.<br>"
+            analysis_text += "• Heart rate shows normal variability.<br>"
         else:
-            analysis_text += (
-                "• Your heart rate shows high variability - consider tracking factors "
-                "like activity, stress, or time of day.<br>"
-            )
-        
+            analysis_text += "• High variability - track activity, stress, or time of day.<br>"
+
         self.analysis_label.setText(analysis_text)
