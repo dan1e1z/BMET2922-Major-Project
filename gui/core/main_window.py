@@ -12,9 +12,10 @@ from gui.ui_tabs import (
 from gui.ui_components import (
     BluetoothConnectionStatus,
     SystemLog,
-    UserManager
 )
-from gui.bluetooth_monitor import BluetoothMonitor
+
+from gui.core.bluetooth_monitor import BluetoothMonitor
+from gui.core.user_manager import UserManager
 
 
 class MainWindow(QtWidgets.QMainWindow):
