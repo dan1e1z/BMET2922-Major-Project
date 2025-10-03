@@ -28,7 +28,7 @@ class MainWindow(QtWidgets.QMainWindow):
         """
         super().__init__()
         self.setWindowTitle("PPG Health Monitor")
-        self.setGeometry(100, 100, 1200, 800)
+        # self.setGeometry(100, 100, 1200, 800)
 
         # User/session management variables
         self.user_manager = UserManager()

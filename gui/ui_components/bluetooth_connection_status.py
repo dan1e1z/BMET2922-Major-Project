@@ -37,6 +37,7 @@ class BluetoothConnectionStatus(QtWidgets.QWidget):
     
     def show_timeout_alarm(self):
         self.timeout_alarm.setText("WARNING: NO DATA - Check Sensor Power")
+        self.timeout_alarm.setStyleSheet("color: red; font-weight: bold; background-color: #ffcccc; padding: 5px; border: 1px solid red; border-radius: 3px;")
         self.timeout_alarm.setVisible(True)
     
     def hide_timeout_alarm(self):
