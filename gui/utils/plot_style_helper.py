@@ -47,30 +47,35 @@ class PlotStyleHelper:
     
     @staticmethod
     def configure_plot_widget(plot_widget, title="", x_label="Time", x_units="s",
-                            y_label="", y_units="", grid=True, 
-                            mouse_enabled=False, menu_enabled=False):
+                          y_label="", y_units="", grid=True, 
+                          mouse_enabled=False, menu_enabled=False):
         """
-        Apply standard configuration to a PlotWidget.
-        
+        Configure a PlotWidget with standard settings, including axis labels with optional units.
+
         Args:
-            plot_widget: pg.PlotWidget to configure
-            title: Plot title
-            x_label: X-axis label
-            x_units: X-axis units
-            y_label: Y-axis label
-            y_units: Y-axis units
-            grid: Show grid
-            mouse_enabled: Enable mouse interaction
-            menu_enabled: Enable context menu
+            plot_widget: pg.PlotWidget instance to configure.
+            title (str): Plot title.
+            x_label (str): Label for the X-axis.
+            x_units (str): Units for the X-axis, appended to the label if provided.
+            y_label (str): Label for the Y-axis.
+            y_units (str): Units for the Y-axis, appended to the label if provided.
+            grid (bool): Whether to display a grid.
+            mouse_enabled (bool): Enable mouse interaction.
+            menu_enabled (bool): Enable context menu.
         """
         if title:
             plot_widget.setTitle(title)
+        
+        # Set axis labels with units if provided
         plot_widget.setLabel('left', y_label, units=y_units)
         plot_widget.setLabel('bottom', x_label, units=x_units)
+        
         if grid:
             plot_widget.showGrid(True, True)
+        
         plot_widget.setMouseEnabled(x=mouse_enabled, y=mouse_enabled)
         plot_widget.setMenuEnabled(menu_enabled)
+
     
     @staticmethod
     def create_legend(plot_widget, offset=(-1, -1)):
