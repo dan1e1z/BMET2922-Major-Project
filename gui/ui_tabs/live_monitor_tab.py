@@ -534,8 +534,6 @@ class LiveMonitorTab(QtWidgets.QWidget, PlotNavigationMixin):
                 self.time_bpm_data,
                 self.visual_bpm_data,
                 x_range,
-                min_limit=30,
-                max_limit=220,
                 scale_mode="auto"
             )
 
@@ -558,8 +556,6 @@ class LiveMonitorTab(QtWidgets.QWidget, PlotNavigationMixin):
                 list(self.ibi_times),
                 list(self.ibi_data),
                 x_range,
-                min_limit=250,
-                max_limit=2000,
                 scale_mode="auto"
             )
 
@@ -571,8 +567,6 @@ class LiveMonitorTab(QtWidgets.QWidget, PlotNavigationMixin):
                 list(self.rr_times),
                 list(self.rr_data),
                 x_range,
-                min_limit=0,
-                max_limit=50,
                 scale_mode="auto"
             )
 
