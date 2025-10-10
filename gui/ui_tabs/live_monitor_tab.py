@@ -283,7 +283,7 @@ class LiveMonitorTab(QtWidgets.QWidget, PlotNavigationMixin):
         self.low_slider.valueChanged.connect(self.update_thresholds)
         
         self.high_slider = QtWidgets.QSlider(QtCore.Qt.Horizontal)
-        self.high_slider.setRange(120, 250)
+        self.high_slider.setRange(40, 250)
         self.high_slider.setValue(self.bpm_high)
         self.high_slider.valueChanged.connect(self.update_thresholds)
         
