@@ -1,5 +1,6 @@
 
 import pytest
+import numpy as np
 from PyQt5 import QtCore
 from unittest.mock import Mock
 from gui.ui_tabs.live_monitor_tab import LiveMonitorTab
@@ -67,6 +68,8 @@ def widget(qtbot, system_log, mocker):
     # Other required attributes
     widget.avg_bpm_display = Mock()
     widget.avg_bpm_display.setText = lambda v: None
+    widget.rr_display = Mock()
+    widget.rr_display.setText = lambda v: setattr(widget, 'rr_display_text', v)
     widget.session_start_time = None
     widget.current_user = None
     widget.bpm_low = 40
@@ -154,3 +157,93 @@ def test_toggle_plots(widget):
     widget.toggle_rr_plot(QtCore.Qt.Checked)
     assert widget.ibi_plot.isVisible()
     assert widget.rr_plot.isVisible()
+
+
+def test_update_peaks_and_ibis(widget, mocker):
+    """Ensure peaks are appended and ibis updated correctly."""
+    # Prepare mocks and input
+    widget.peak_scatter = mocker.Mock()
+    peak_times = np.array([1.0, 2.0, 3.0])
+    peak_amps = np.array([0.1, 0.2, 0.3])
+
+    # Call private update methods
+    widget._update_peaks(peak_times, peak_amps)
+    assert widget.last_peak_time == 3.0
+    widget._update_ibis(peak_times)
+    # IBI between 1.0 and 2.0 -> 1000 ms
+    assert widget.current_ibi == pytest.approx(1000.0)
+
+
+def test_estimate_respiratory_rate_with_mocked_find_peaks(widget, mocker):
+    """Mock scipy.signal.find_peaks to force a predictable respiratory rate."""
+    # ensure rr_display exists and is inspectable
+    widget.rr_display = mocker.Mock()
+    widget.rr_display.setText = mocker.Mock()
+
+    # Patch find_peaks to return regularly spaced peaks (every 100 samples)
+    mocker.patch('gui.ui_tabs.live_monitor_tab.signal.find_peaks', return_value=(np.array([0, 100, 200, 300]), {}))
+
+    # Call estimator with any array - the patched find_peaks drives the result
+    widget.estimate_respiratory_rate(np.zeros(400))
+
+    # With distance 100 samples and sampling_rate=50 -> intervals = 100/50 = 2s -> RR = 60/2 = 30
+    assert widget.current_rr == pytest.approx(30.0)
+    widget.rr_display.setText.assert_called()
+
+
+def test_process_ppg_signal_triggers_updates(widget, mocker):
+    """Process buffer and ensure update hooks are called when peaks found."""
+    # Fill buffer with > 5 seconds of samples
+    widget.ppg_buffer.clear()
+    widget.ppg_times.clear()
+    for i in range(widget.sampling_rate * 6):
+        widget.ppg_buffer.append(0.0)
+        widget.ppg_times.append(float(i))
+
+    # Patch SignalProcessingUtils to return cleaned signal and peaks
+    mocker.patch('gui.ui_tabs.live_monitor_tab.SignalProcessingUtils.clean_ppg_signal', return_value=np.zeros(len(widget.ppg_buffer)))
+    mocker.patch('gui.ui_tabs.live_monitor_tab.SignalProcessingUtils.detect_ppg_peaks', return_value=(np.array([0, 10, 20]), {}))
+
+    # Spy on private update methods
+    mock_update_peaks = mocker.patch.object(widget, '_update_peaks')
+    mock_update_ibis = mocker.patch.object(widget, '_update_ibis')
+
+    widget.process_ppg_signal()
+
+    assert mock_update_peaks.called
+    assert mock_update_ibis.called
+
+
+def test_calculate_hrv_metrics_and_display(widget, mocker):
+    """Ensure HRV calculation uses utility and updates the display."""
+    # Provide enough ibis for calculation
+    widget.ibi_data.clear()
+    for v in range(12):
+        widget.ibi_data.append(800.0)
+
+    # Patch utility to return expected metrics
+    mocker.patch('gui.ui_tabs.live_monitor_tab.SignalProcessingUtils.calculate_hrv_time_domain', return_value={'rmssd': 25.0, 'sdnn': 40.0, 'pnn50': 1.0, 'mean_rr': 800.0, 'sd1': 5.0, 'sd2': 10.0})
+
+    widget.hrv_display = mocker.Mock()
+    widget.hrv_display.setText = mocker.Mock()
+
+    widget.calculate_hrv_metrics()
+
+    widget.hrv_display.setText.assert_called()
+
+
+def test_update_average_bpm_line(widget, mocker):
+    """Average BPM line should update based on visual data."""
+    widget.visual_bpm_data = [60, 70, 80]
+    # Patch formatter
+    mocker.patch('gui.ui_tabs.live_monitor_tab.SessionInfoFormatter.calculate_session_stats', return_value={'count': 3, 'avg': 70.0})
+
+    widget.avg_bpm_display = mocker.Mock()
+    widget.avg_bpm_display.setText = mocker.Mock()
+    widget.avg_bpm_line = mocker.Mock()
+    widget.avg_bpm_line.setValue = mocker.Mock()
+
+    widget.update_average_bpm_line()
+
+    widget.avg_bpm_display.setText.assert_called()
+    widget.avg_bpm_line.setValue.assert_called_with(70.0)
