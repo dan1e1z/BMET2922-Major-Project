@@ -260,8 +260,11 @@ class MainWindow(QtWidgets.QMainWindow):
             duration = (datetime.now() - self.session_start_time).total_seconds() / 60
             self.status_bar.setText(f"Recording for {self.current_user} | Current BPM: {bpm:.1f} | Duration: {duration:.1f}min | Samples: {current_samples}")
 
-        print((f"packet seq: {packet['sequence']}, bpm: {packet['bpm']}, mode: {packet['mode']}"))
-        self.connection_status.update_mode(packet["mode"])
+        # print((f"packet seq: {packet.get('sequence')}, bpm: {packet.get('bpm')}, mode: {packet.get('mode')}"))
+        mode = packet.get("mode")
+        if mode is not None:
+            self.connection_status.update_mode(mode)
+
     def handle_connection_status(self, connected, message):
         self.connection_status.update_status(connected, message)
         pass
