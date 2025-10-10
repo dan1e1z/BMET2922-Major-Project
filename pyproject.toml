@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.11"
+# Core dependencies needed for the application to run
 dependencies = [
     "neurokit2>=0.2.12",
     "numpy>=2.3.3",
@@ -11,6 +12,15 @@ dependencies = [
     "pyqtgraph>=0.13.7",
     "pyserial>=3.5",
     "scipy>=1.16.2",
+]
+
+# Optional dependencies for testing
+[project.optional-dependencies]
+test = [
+    "pytest>=8.4.2",
+    "pytest-cov>=7.0.0",
+    "pytest-mock>=3.15.1",
+    "pytest-qt>=4.5.0",
 ]
 
 [tool.uv]
