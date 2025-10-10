@@ -20,7 +20,7 @@ class BluetoothMonitor(QtCore.QObject):
         self.baudRate = baudRate
         self.serialPort = serial.Serial()
         self.running = True
-        self.STRUCT_FORMAT = "<L50HBB"
+        self.STRUCT_FORMAT = "<L50HfB"
         self.STRUCT_SIZE = struct.calcsize(self.STRUCT_FORMAT)
         self.last_packet_time = 0
 
@@ -79,7 +79,7 @@ class BluetoothMonitor(QtCore.QObject):
                             "sequence": data[0],
                             "ppg_values": data[1:51],
                             "bpm": data[51],
-                            "temp": data[52]
+                            "mode": data[52]
                         }
                         # TESTING DEBUGGING PRINTS
                         # print(f"Received packet sequence: {packet_dict['sequence']}")

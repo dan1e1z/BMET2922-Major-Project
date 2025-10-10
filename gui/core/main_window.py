@@ -245,10 +245,9 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def handle_new_packet(self, packet):
         sequence = packet.get('sequence', 0)
-        self.expected_sequence = sequence
-        if self.expected_sequence != sequence:
+        if sequence != self.expected_sequence:
             self.system_log.add_log_entry(f"Packet sequence mismatch: expected {self.expected_sequence}, got {sequence}")
-        self.expected_sequence += 1
+        self.expected_sequence = sequence + 1
 
         # Process the packet in PPG tab and check for alarms
         alarm_message = self.live_monitor_tab.new_data_received(packet)
@@ -261,6 +260,8 @@ class MainWindow(QtWidgets.QMainWindow):
             duration = (datetime.now() - self.session_start_time).total_seconds() / 60
             self.status_bar.setText(f"Recording for {self.current_user} | Current BPM: {bpm:.1f} | Duration: {duration:.1f}min | Samples: {current_samples}")
 
+        print((f"packet seq: {packet['sequence']}, bpm: {packet['bpm']}, mode: {packet['mode']}"))
+        self.connection_status.update_mode(packet["mode"])
     def handle_connection_status(self, connected, message):
         self.connection_status.update_status(connected, message)
         pass

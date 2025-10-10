@@ -313,6 +313,7 @@ class LiveMonitorTab(QtWidgets.QWidget, PlotNavigationMixin):
         """
         Process new data packet, generate timestamps, and update plots.
         """
+        
         bpm = packet['bpm']
         self.current_bpm = bpm
         
@@ -514,10 +515,10 @@ class LiveMonitorTab(QtWidgets.QWidget, PlotNavigationMixin):
         Update plot view:
         - Sync x-axis range across plots based on visible window.
         - Auto-scale y-axis using PlotStyleHelper with clinical ranges where applicable:
-            * BPM: 30–220 bpm
-            * IBI: 250–2000 ms
-            * RR: 0–50 breaths/min
-            * PPG: dynamic scaling (no limits)
+            - BPM: 30–220 bpm
+            - IBI: 250–2000 ms
+            - RR: 0–50 breaths/min
+            - PPG: dynamic scaling (no limits)
         """
         if not self.time_ppg_data:
             return
@@ -545,7 +546,9 @@ class LiveMonitorTab(QtWidgets.QWidget, PlotNavigationMixin):
                 self.time_ppg_data,
                 self.visual_ppg_data,
                 x_range,
-                scale_mode="auto" 
+                min_limit=0,
+                max_limit=4095,
+                scale_mode="auto"
             )
 
         # IBI plot
