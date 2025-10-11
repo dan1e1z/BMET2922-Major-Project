@@ -59,8 +59,8 @@ You can install the necessary Python packages using the `requirements.txt` file.
 
     *   On **macOS/Linux**:
         ```sh
-        python3 -m venv venv
-        source venv/bin/activate
+        python3 -m venv .venv
+        source .venv/bin/activate
         ```
 
     *   On **Windows**:
