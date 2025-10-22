@@ -392,32 +392,90 @@ class LiveMonitorTab(QtWidgets.QWidget, PlotNavigationMixin):
             self.calculate_hrv_metrics()
             self.last_hrv_update = self.last_packet_time
         
-        self.estimate_respiratory_rate(ppg_cleaned)
+        self.estimate_respiratory_rate(ppg_cleaned, peaks)
 
-    def estimate_respiratory_rate(self, ppg_cleaned):
-        """Estimate respiratory rate from PPG signal using frequency analysis."""
+    def estimate_respiratory_rate(self, ppg_signal, peaks):
+        """
+        Estimate respiratory rate using R-R interval variability analysis (Welch method on IBI signal).
+
+        Implements the algorithm from: https://pmc.ncbi.nlm.nih.gov/articles/PMC9056464/#Sec2
+
+        1. Detect PPG peaks → These represent heartbeats
+        2. Calculate IBI → Time intervals between consecutive peaks
+        3. Remove false peaks → Drop peaks where IBI < 30% of mean IBI
+        4. Apply Welch's method to cleaned IBI signal → Find frequency components
+        5. Find respiratory frequency → Maximum power in 0.1-0.5 Hz band
+        6. Convert to breaths/min → Respiratory rate = frequency x 60
+        """
+
+        if len(peaks) < 3:
+            return
+
+        # Calculate R-R intervals (inter-beat intervals in seconds)
+        rr_intervals = np.diff(peaks) / self.sampling_rate
+
+        if len(rr_intervals) == 0:
+            return
+
+        # Remove false peaks: drop peaks where RR interval < 30% of mean
+        threshold = 0.3 * np.mean(rr_intervals)
+        valid_peak_mask = np.ones(len(peaks), dtype=bool)
+
+        for i in range(len(rr_intervals)):
+            if rr_intervals[i] < threshold:
+                valid_peak_mask[i + 1] = False
+
+        valid_peaks = peaks[valid_peak_mask]
+
+        if len(valid_peaks) < 3:
+            return
+
+        # Recalculate RR intervals with valid peaks
+        rr_intervals_clean = np.diff(valid_peaks) / self.sampling_rate
+
+        if len(rr_intervals_clean) < 10:
+            return
+
+        # Apply Welch's method to RR intervals
+        sampling_freq = 1.0 / np.mean(rr_intervals_clean)
+        # sampling_freq = self.sampling_rate 
+        nperseg = len(rr_intervals_clean)
+        noverlap = int(nperseg * 0.5)
+
+        f, Pxx = signal.welch(rr_intervals_clean,
+                            fs=sampling_freq,
+                            window='hann',
+                            nperseg=nperseg,
+                            noverlap=noverlap,
+                            nfft=nperseg,
+                            scaling='density',
+                            average='mean')
+
+        # Find peak in respiratory frequency band (0.1-0.5 Hz)
+        band_mask = (0.1 <= f) & (f <= 0.5)
+
+        if not np.any(band_mask) or np.max(Pxx[band_mask]) == 0:
+            return
+
+        # Get frequency with maximum PSD and convert to breaths/min
+        rr_estimate = f[band_mask][np.argmax(Pxx[band_mask])] * 60
         
-        # Apply bandpass filter for respiratory frequencies (0.1-0.5 Hz = 6-30 breaths/min)
-        sos = signal.butter(2, [0.1, 0.5], btype='band', fs=self.sampling_rate, output='sos')
-        filtered = signal.sosfilt(sos, ppg_cleaned)
-        
-        # Find peaks in the filtered signal (min 2 seconds between breaths)
-        peaks, _ = signal.find_peaks(filtered, distance=self.sampling_rate * 2)
-        
-        if len(peaks) < 2:
-            # Keep current RR value when insufficient peaks detected
-            self.current_rr = 0
-            self.rr_display.setText("0.0 breaths/min")
+        # Validate physiological range
+        if not (6 <= rr_estimate <= 30):
+            return
+
+        # PRQ range based on: https://pmc.ncbi.nlm.nih.gov/articles/PMC6465339/
+        hr_to_rr_ratio = self.current_bpm / rr_estimate if rr_estimate > 0 else 0
+        if not (2.0 <= hr_to_rr_ratio <= 10.0):
             return
         
-        # Calculate respiratory rate from peak intervals
-        peak_intervals = np.diff(peaks) / self.sampling_rate  # Convert to seconds
-        mean_interval = np.mean(peak_intervals)
-        rr = 60 / mean_interval  # Convert to breaths/min
-        
-        # Update current RR value
-        self.current_rr = rr
-        self.rr_display.setText(f"{rr:.1f} breaths/min")
+        # Adaptive smoothing
+        delta = abs(rr_estimate - self.current_rr)
+        alpha = 0.6 if delta > 5 else 0.4 if delta > 2 else 0.2
+        self.current_rr = (1 - alpha) * self.current_rr + alpha * rr_estimate
+
+        self.rr_display.setText(f"{self.current_rr:.1f} breaths/min")
+
     
     def update_physiological_metrics(self):
         """Update IBI and RR data points every second for live monitoring."""
@@ -630,27 +688,27 @@ class LiveMonitorTab(QtWidgets.QWidget, PlotNavigationMixin):
         """Check BPM against thresholds and trigger alarms if needed."""
         prev_state = self.alarm_active
         msg = None
-
+        self.alarm_active = False
         if self.current_bpm < self.bpm_low:
             self.alarm_active = True
             self.alarm_widget.setText(f"WARNING: PULSE LOW: {self.current_bpm:.1f} BPM")
             if not prev_state:
                 self.alarm_timer.start(1000)
-                msg = "Pulse Low"
+            msg = "Pulse Low"
                 
         elif self.current_bpm > self.bpm_high:
             self.alarm_active = True
             self.alarm_widget.setText(f"WARNING: PULSE HIGH: {self.current_bpm:.1f} BPM")
             if not prev_state:
                 self.alarm_timer.start(1000)
-                msg = "Pulse High"
+            msg = "Pulse High"
                 
         else:
             if prev_state:
                 self.alarm_active = False
                 self.alarm_widget.setVisible(False)
                 self.alarm_timer.stop()
-                msg = "Pulse Normal"
+            msg = "Pulse Normal"
                 
         return msg
 
