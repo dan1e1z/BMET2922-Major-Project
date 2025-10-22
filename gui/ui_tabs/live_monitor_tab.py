@@ -604,8 +604,8 @@ class LiveMonitorTab(QtWidgets.QWidget, PlotNavigationMixin):
                 self.time_ppg_data,
                 self.visual_ppg_data,
                 x_range,
-                min_limit=0,
-                max_limit=4095,
+                # min_limit=0,
+                # max_limit=4095,
                 scale_mode="auto"
             )
 
