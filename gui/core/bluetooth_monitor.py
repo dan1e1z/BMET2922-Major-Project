@@ -2,7 +2,7 @@ from PyQt5 import QtCore
 import struct
 import serial
 import time
-
+import datetime 
 PACKET_RECEIVE_TIMEOUT = 1.1
 FIVE_SEC_TIMEOUT = 5
 
@@ -74,6 +74,9 @@ class BluetoothMonitor(QtCore.QObject):
                 if self.serialPort.in_waiting >= self.STRUCT_SIZE:
                     packet = self.serialPort.read(self.STRUCT_SIZE)
                     if len(packet) == self.STRUCT_SIZE:
+
+                        now = datetime.datetime.now()
+
                         data = struct.unpack(self.STRUCT_FORMAT, packet)
                         packet_dict = {
                             "sequence": data[0],
@@ -82,6 +85,7 @@ class BluetoothMonitor(QtCore.QObject):
                             "mode": data[52]
                         }
                         # TESTING DEBUGGING PRINTS
+                        print(f"[{now.strftime('%H:%M:%S.%f')}] Received packet: {packet_dict}")
                         # print(f"Received packet sequence: {packet_dict['sequence']}")
                         # print(f"Received packet bpm: {packet_dict['bpm']}")
                         self.packet_received.emit(packet_dict)
