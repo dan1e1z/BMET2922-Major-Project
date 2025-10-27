@@ -14,7 +14,7 @@ class BluetoothMonitor(QtCore.QObject):
     connection_status_changed = QtCore.pyqtSignal(bool, str)
     connection_timeout = QtCore.pyqtSignal()
 
-    def __init__(self, port="COM8", baudRate=115200):
+    def __init__(self, port="COM3", baudRate=115200):
         super().__init__()
         self.port = port
         self.baudRate = baudRate

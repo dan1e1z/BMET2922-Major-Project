@@ -9,7 +9,8 @@ from gui.utils import (
     PlotNavigationMixin,
     PlotStyleHelper,
     SignalProcessingUtils,
-    SessionInfoFormatter
+    SessionInfoFormatter,
+    HRVTooltipUtils
 )
 
 
@@ -452,6 +453,8 @@ class LiveMonitorTab(QtWidgets.QWidget, PlotNavigationMixin):
                             average='mean')
 
         # Find peak in respiratory frequency band (0.1-0.5 Hz)
+        # Lower limit 6 breaths/min ⇒ 6 ÷ 60 ≈ 0.10 Hz
+        # Upper limit 30 breaths/min ⇒ 30 ÷ 60 = 0.50 Hz
         band_mask = (0.1 <= f) & (f <= 0.5)
 
         if not np.any(band_mask) or np.max(Pxx[band_mask]) == 0:
@@ -491,37 +494,61 @@ class LiveMonitorTab(QtWidgets.QWidget, PlotNavigationMixin):
         """Calculate HRV metrics using SignalProcessingUtils for consistency."""
         if len(self.ibi_data) < 10:
             return
-        
+
         rr_intervals = np.array(self.ibi_data)
-        
+
         # HRV calculation
         self.hrv_metrics = SignalProcessingUtils.calculate_hrv_time_domain(rr_intervals)
-        
+
         if not self.hrv_metrics:
             return
-        
-        # Display results
-        hrv_text = "<br>".join([
-            f"<span style='font-size:12px; font-weight:bold; color:#2E7D32;'>RMSSD:</span> "
-            f"<span style='font-size:12px; color:black;'>{self.hrv_metrics.get('rmssd', 0):.1f} ms</span>",
-            
-            f"<span style='font-size:12px; font-weight:bold; color:#2E7D32;'>SDNN:</span> "
-            f"<span style='font-size:12px; color:black;'>{self.hrv_metrics.get('sdnn', 0):.1f} ms</span>",
-            
-            f"<span style='font-size:12px; font-weight:bold; color:#2E7D32;'>pNN50:</span> "
-            f"<span style='font-size:12px; color:black;'>{self.hrv_metrics.get('pnn50', 0):.1f}%</span>",
-            
-            f"<span style='font-size:12px; font-weight:bold; color:#2E7D32;'>Mean RR:</span> "
-            f"<span style='font-size:12px; color:black;'>{self.hrv_metrics.get('mean_rr', 0):.1f} ms</span>",
-            
-            f"<span style='font-size:12px; font-weight:bold; color:#2E7D32;'>SD1:</span> "
-            f"<span style='font-size:12px; color:black;'>{self.hrv_metrics.get('sd1', 0):.1f} ms</span>",
-            
-            f"<span style='font-size:12px; font-weight:bold; color:#2E7D32;'>SD2:</span> "
-            f"<span style='font-size:12px; color:black;'>{self.hrv_metrics.get('sd2', 0):.1f} ms</span>"
-        ])
-        
-        self.hrv_display.setText(hrv_text)
+
+        # Get the parent layout that contains hrv_display
+        parent_layout = self.hrv_display.parent().layout()
+        if parent_layout:
+            # Find and remove the old hrv_display
+            for i in range(parent_layout.count()):
+                if parent_layout.itemAt(i).widget() == self.hrv_display:
+                    parent_layout.removeWidget(self.hrv_display)
+                    self.hrv_display.setParent(None)
+                    self.hrv_display.deleteLater()
+                    break
+
+        # Create a container widget to hold individual metric labels
+        hrv_container = QtWidgets.QWidget()
+        hrv_layout = QtWidgets.QVBoxLayout(hrv_container)
+        hrv_layout.setContentsMargins(0, 0, 0, 0)
+        hrv_layout.setSpacing(0)  # No spacing to mimic original compact look
+
+        # Define metrics to display with individual tooltips
+        metrics_to_display = [
+            ("RMSSD", self.hrv_metrics.get('rmssd', 0), "ms"),
+            ("SDNN", self.hrv_metrics.get('sdnn', 0), "ms"),
+            ("pNN50", self.hrv_metrics.get('pnn50', 0), "%"),
+            ("Mean IBI", self.hrv_metrics.get('mean_rr', 0), "ms"),
+            ("SD1", self.hrv_metrics.get('sd1', 0), "ms"),
+            ("SD2", self.hrv_metrics.get('sd2', 0), "ms"),
+        ]
+
+        for metric_name, value, unit in metrics_to_display:
+            # Create label styled to match original appearance with individual tooltip
+            display_text = f"<span style='font-size:12px; font-weight:bold; color:#2E7D32; font-family:monospace;'>{metric_name}:</span> <span style='font-size:12px; color:black; font-family:monospace;'>{value:.1f} {unit}</span>"
+            label = QtWidgets.QLabel(display_text)
+            label.setStyleSheet("background-color: transparent;")
+            label.setAlignment(QtCore.Qt.AlignCenter)  # Match original center alignment
+
+            # Add individual tooltip using HRVTooltipUtils
+            tooltip = HRVTooltipUtils.get_hrv_metric_tooltips().get(metric_name, "")
+            if tooltip:
+                label.setToolTip(f"<b>{metric_name}:</b> {value:.1f} {unit}<br>{tooltip}")
+
+            hrv_layout.addWidget(label)
+
+        # Add the container to the parent layout
+        parent_layout.addWidget(hrv_container)
+
+        # Update the reference for future use
+        self.hrv_display = hrv_container
 
     def _update_peaks(self, peak_times, peak_amplitudes):
         """Update peak data with new peaks and visualize them."""

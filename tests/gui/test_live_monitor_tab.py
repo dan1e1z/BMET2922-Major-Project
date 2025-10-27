@@ -175,19 +175,28 @@ def test_update_peaks_and_ibis(widget, mocker):
 
 
 def test_estimate_respiratory_rate_with_mocked_find_peaks(widget, mocker):
-    """Mock scipy.signal.find_peaks to force a predictable respiratory rate."""
-    # ensure rr_display exists and is inspectable
-    widget.rr_display = mocker.Mock()
+    """Test respiratory rate estimation with mocked signal processing."""
+    # Set current_bpm for ratio check
+    widget.current_bpm = 60
+
+    # Mock rr_display.setText to check if called
     widget.rr_display.setText = mocker.Mock()
 
-    # Patch find_peaks to return regularly spaced peaks (every 100 samples)
-    mocker.patch('gui.ui_tabs.live_monitor_tab.signal.find_peaks', return_value=(np.array([0, 100, 200, 300]), {}))
+    # Mock signal.welch to return a peak at 0.5 Hz (30 breaths/min)
+    f_mock = np.linspace(0, 0.5, 100) 
+    Pxx_mock = np.zeros(100)
+    Pxx_mock[-1] = 1  # Peak at f[-1] = 0.5 Hz
+    mocker.patch('scipy.signal.welch', return_value=(f_mock, Pxx_mock))
 
-    # Call estimator with any array - the patched find_peaks drives the result
-    widget.estimate_respiratory_rate(np.zeros(400))
+    # Use regularly spaced peaks (every 100 samples, 11 peaks for sufficient data)
+    peaks = np.arange(0, 1100, 100)
 
-    # With distance 100 samples and sampling_rate=50 -> intervals = 100/50 = 2s -> RR = 60/2 = 30
-    assert widget.current_rr == pytest.approx(30.0)
+    # Call estimator with signal and peaks
+    widget.estimate_respiratory_rate(np.zeros(1101), peaks)
+
+    # Should estimate RR as 30 breaths/min, smoothed from 0
+    # With alpha = 0.6 (delta = 30 > 5): current_rr = 0.4*0 + 0.6*30 = 18.0
+    assert widget.current_rr == pytest.approx(18.0, abs=1.0)
     widget.rr_display.setText.assert_called()
 
 

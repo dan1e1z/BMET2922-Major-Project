@@ -12,7 +12,8 @@ from gui.utils import (
     PlotNavigationMixin,
     DataValidationUtils,
     SignalProcessingUtils,
-    SessionInfoFormatter
+    SessionInfoFormatter,
+    HRVTooltipUtils
 )
 
 class ResearchTab(QtWidgets.QWidget, PlotNavigationMixin):
@@ -84,7 +85,7 @@ class ResearchTab(QtWidgets.QWidget, PlotNavigationMixin):
         self.plot_tabs.addTab(time_tab, "Time Domain")
         
         # HRV analysis tab
-        hrv_tab = self.create_hrv_tab()
+        hrv_tab = self.create_hrv_plot_tab()
         self.plot_tabs.addTab(hrv_tab, "HRV Analysis")
         
         layout.addWidget(self.plot_tabs)
@@ -141,18 +142,18 @@ class ResearchTab(QtWidgets.QWidget, PlotNavigationMixin):
         
         return time_tab
 
-    def create_hrv_tab(self):
-        """Create HRV analysis tab."""
+    def create_hrv_plot_tab(self):
+        """Create HRV analysis plot tab."""
         hrv_tab = QtWidgets.QWidget()
         hrv_layout = QtWidgets.QVBoxLayout(hrv_tab)
         
         self.hrv_plot = pg.PlotWidget()    
         PlotStyleHelper.configure_plot_widget(
             self.hrv_plot,
-            title="R-R Interval Time Series (Tachogram)",
+            title="IBI (Inter-Beat Interval)",
             x_label="Beat Number",
             x_units="",
-            y_label="R-R Interval",
+            y_label="IBI",
             y_units="ms",
             grid=True,
             mouse_enabled=False,
@@ -243,11 +244,12 @@ class ResearchTab(QtWidgets.QWidget, PlotNavigationMixin):
         method_layout = QtWidgets.QFormLayout()
         self.filter_method_combo = QtWidgets.QComboBox()
         self.filter_method_combo.addItems([
-            "NeuroKit Elgendi", 
-            "Custom Butterworth", 
-            "Savitzky-Golay",
-            "No Filter"
+            "Band-Pass Filter 0.5–8 Hz (Elgendi)",
+            "Butterworth Filter (Custom)",
+            "Savitzky–Golay FIR (Smoothing)",
+            "None (Raw Signal)",
         ])
+
         self.filter_method_combo.currentIndexChanged.connect(self.update_control_visibility)
         method_layout.addRow("Filter Method:", self.filter_method_combo)
         layout.addLayout(method_layout)
@@ -351,11 +353,11 @@ class ResearchTab(QtWidgets.QWidget, PlotNavigationMixin):
         return widget
 
     def create_analysis_tab(self):
-        """Create analysis tools tab."""
+        """Create analysis tools tab with peak detection at top, then HRV/Quality tabs."""
         widget = QtWidgets.QWidget()
         layout = QtWidgets.QVBoxLayout(widget)
         
-        # Peak detection
+        # Peak detection section at top
         peak_group = QtWidgets.QGroupBox("Peak Detection")
         peak_layout = QtWidgets.QVBoxLayout(peak_group)
         
@@ -365,7 +367,11 @@ class ResearchTab(QtWidgets.QWidget, PlotNavigationMixin):
         
         method_layout = QtWidgets.QFormLayout()
         self.peak_method_combo = QtWidgets.QComboBox()
-        self.peak_method_combo.addItems(["NeuroKit Elgendi", "NeuroKit Bishop", "NeuroKit Charlton"])
+        self.peak_method_combo.addItems([
+            "Elgendi — Dual MA Threshold (PPG Systolic Peaks)",
+            "Bishop — MSPTD Multi-Scale Detection",
+            "Charlton — MSPTD Optimised (Faster)",
+        ])
         method_layout.addRow("Detection Method:", self.peak_method_combo)
         peak_layout.addLayout(method_layout)
         
@@ -374,37 +380,54 @@ class ResearchTab(QtWidgets.QWidget, PlotNavigationMixin):
         peak_layout.addWidget(detect_peaks_btn)
         layout.addWidget(peak_group)
         
-        # HRV analysis
-        hrv_group = QtWidgets.QGroupBox("Heart Rate Variability Analysis")
-        hrv_layout = QtWidgets.QVBoxLayout(hrv_group)
+        # Sub-tabs for HRV and Quality analysis
+        self.analysis_sub_tabs = QtWidgets.QTabWidget()
+        
+        # HRV analysis tab
+        self.analysis_sub_tabs.addTab(self.create_hrv_tab(), "HRV Analysis")
+        
+        # Signal quality tab
+        self.analysis_sub_tabs.addTab(self.create_quality_tab(), "Signal Quality")
+        
+        layout.addWidget(self.analysis_sub_tabs)
+        return widget
+
+    def create_hrv_tab(self):
+        """Create HRV analysis sub-tab."""
+        widget = QtWidgets.QWidget()
+        layout = QtWidgets.QVBoxLayout(widget)
         
         analyze_hrv_btn = QtWidgets.QPushButton("Compute HRV Metrics")
         analyze_hrv_btn.clicked.connect(self.analyze_hrv)
-        hrv_layout.addWidget(analyze_hrv_btn)
+        layout.addWidget(analyze_hrv_btn, 0)
         
-        self.hrv_results = QtWidgets.QTextEdit()
-        self.hrv_results.setMaximumHeight(150)
-        self.hrv_results.setReadOnly(True)
-        self.hrv_results.setStyleSheet("font-family: monospace; font-size: 10px;")
-        hrv_layout.addWidget(self.hrv_results)
-        layout.addWidget(hrv_group)
-        
-        # Signal quality
-        quality_group = QtWidgets.QGroupBox("Signal Quality Assessment")
-        quality_layout = QtWidgets.QVBoxLayout(quality_group)
+        self.hrv_scroll_area = QtWidgets.QScrollArea()
+        self.hrv_scroll_area.setWidgetResizable(True)
+        self.hrv_scroll_area.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
+        self.hrv_results_container = QtWidgets.QWidget()
+        self.hrv_results_container.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
+        self.hrv_results_layout = QtWidgets.QVBoxLayout(self.hrv_results_container)
+        self.hrv_scroll_area.setWidget(self.hrv_results_container)
+        layout.addWidget(self.hrv_scroll_area, 1)
+        return widget
+
+    def create_quality_tab(self):
+        """Create signal quality assessment sub-tab."""
+        widget = QtWidgets.QWidget()
+        layout = QtWidgets.QVBoxLayout(widget)
         
         assess_quality_btn = QtWidgets.QPushButton("Assess Signal Quality")
         assess_quality_btn.clicked.connect(self.assess_signal_quality)
-        quality_layout.addWidget(assess_quality_btn)
+        layout.addWidget(assess_quality_btn, 0)
         
-        self.quality_results = QtWidgets.QTextEdit()
-        self.quality_results.setMaximumHeight(100)
-        self.quality_results.setReadOnly(True)
-        self.quality_results.setStyleSheet("font-family: monospace; font-size: 10px;")
-        quality_layout.addWidget(self.quality_results)
-        layout.addWidget(quality_group)
-        
-        layout.addStretch()
+        self.quality_scroll_area = QtWidgets.QScrollArea()
+        self.quality_scroll_area.setWidgetResizable(True)
+        self.quality_scroll_area.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
+        self.quality_results_container = QtWidgets.QWidget()
+        self.quality_results_container.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
+        self.quality_results_layout = QtWidgets.QVBoxLayout(self.quality_results_container)
+        self.quality_scroll_area.setWidget(self.quality_results_container)
+        layout.addWidget(self.quality_scroll_area, 1)
         return widget
 
     def create_export_tab(self):
@@ -740,7 +763,7 @@ class ResearchTab(QtWidgets.QWidget, PlotNavigationMixin):
         )
         
         if len(rr_intervals) < 5:
-            self.hrv_results.setText("Error: Insufficient R-R intervals for analysis")
+            self.hrv_results.setText("Error: Insufficient IBI intervals for analysis")
             return
         
         # Calculate time domain and nonlinear HRV metrics
@@ -748,11 +771,11 @@ class ResearchTab(QtWidgets.QWidget, PlotNavigationMixin):
         time_nonlinear_metrics = SignalProcessingUtils.calculate_hrv_time_domain(rr_intervals)
         
         if not time_nonlinear_metrics:
-            self.hrv_results.setText("Error: Insufficient valid R-R intervals for analysis")
+            self.hrv_results.setText("Error: Insufficient valid IBI intervals for analysis")
             return
         
         # Extract metrics from utility results
-        rr_mean = time_nonlinear_metrics.get('mean_rr', 0)
+        rr_mean = time_nonlinear_metrics.get('mean_ibi', 0)
         rr_std = time_nonlinear_metrics.get('sdnn', 0)
         rmssd = time_nonlinear_metrics.get('rmssd', 0)
         pnn50 = time_nonlinear_metrics.get('pnn50', 0)
@@ -806,41 +829,52 @@ class ResearchTab(QtWidgets.QWidget, PlotNavigationMixin):
         }
         
         # Display results
-        results_text = "<br>".join([
-            f"<span style='font-size:14px; color:#37474F; font-weight:bold;'>TIME DOMAIN METRICS</span>",
-            (f"<span style='font-size:12px; color:#2E7D32;'>Mean R-R: </span>"
-            f"<span style='font-size:12px; color:#263238;'>{rr_mean:.1f} ms</span>"),
-            (f"<span style='font-size:12px; color:#2E7D32;'>SDNN: </span>"
-            f"<span style='font-size:12px; color:#263238;'>{rr_std:.1f} ms</span>"),
-            (f"<span style='font-size:12px; color:#2E7D32;'>RMSSD: </span>"
-            f"<span style='font-size:12px; color:#263238;'>{rmssd:.1f} ms</span>"),
-            (f"<span style='font-size:12px; color:#2E7D32;'>pNN50: </span>"
-            f"<span style='font-size:12px; color:#263238;'>{pnn50:.1f}%</span>"),
-            (f"<span style='font-size:12px; color:#2E7D32;'>Heart Rate: </span>"
-            f"<span style='font-size:12px; color:#263238;'>{60000/rr_mean if rr_mean > 0 else 0:.1f} bpm</span>"),
-            "", 
+        # Clear previous results
+        while self.hrv_results_layout.count():
+            child = self.hrv_results_layout.takeAt(0)
+            if child.widget():
+                child.widget().deleteLater()
 
-            f"<span style='font-size:14px; color:#37474F; font-weight:bold;'>FREQUENCY DOMAIN</span>",
-            (f"<span style='font-size:12px; color:#2E7D32;'>VLF Power: </span>"
-            f"<span style='font-size:12px; color:#263238;'>{vlf_power:.3f} ms²</span>"),
-            (f"<span style='font-size:12px; color:#2E7D32;'>LF Power: </span>"
-            f"<span style='font-size:12px; color:#263238;'>{lf_power:.3f} ms²</span>"),
-            (f"<span style='font-size:12px; color:#2E7D32;'>HF Power: </span>"
-            f"<span style='font-size:12px; color:#263238;'>{hf_power:.3f} ms²</span>"),
-            (f"<span style='font-size:12px; color:#2E7D32;'>LF/HF Ratio: </span>"
-            f"<span style='font-size:12px; color:#263238;'>{lf_hf_ratio:.2f}</span>"),
-            "", 
+        # Prepare values for formatting
+        hrv_values = {
+            'mean_ibi': rr_mean,
+            'sdnn': rr_std,
+            'rmssd': rmssd,
+            'pnn50': pnn50,
+            'heart_rate': 60000 / rr_mean if rr_mean > 0 else 0,
+            'vlf_power': vlf_power,
+            'lf_power': lf_power,
+            'hf_power': hf_power,
+            'lf_hf_ratio': lf_hf_ratio,
+            'sd1': sd1,
+            'sd2': sd2,
+            'sd_ratio': sd_ratio
+        }
 
-            f"<span style='font-size:14px; color:#37474F; font-weight:bold;'>NONLINEAR METRICS</span>",
-            (f"<span style='font-size:12px; color:#2E7D32;'>SD1: </span>"
-            f"<span style='font-size:12px; color:#263238;'>{sd1:.2f} ms</span>"),
-            (f"<span style='font-size:12px; color:#2E7D32;'>SD2: </span>"
-            f"<span style='font-size:12px; color:#263238;'>{sd2:.2f} ms</span>"),
-            (f"<span style='font-size:12px; color:#2E7D32;'>SD1/SD2 Ratio: </span>"
-            f"<span style='font-size:12px; color:#263238;'>{sd_ratio:.3f}</span>")
-        ])
-        
-        self.hrv_results.setText(results_text)
+        # Get metrics definitions from utility
+        metrics_definitions = HRVTooltipUtils.get_hrv_metrics_definitions()
+
+        for name, value_template, tooltip, *is_header in metrics_definitions:
+            if is_header and is_header[0]:
+                # Section header
+                label = QtWidgets.QLabel(f"<span style='font-size:14px; color:#37474F; font-weight:bold; background-color: transparent;'>{name}</span>")
+                label.setStyleSheet("background-color: transparent;")
+            elif name == "":
+                # Spacer
+                label = QtWidgets.QLabel("")
+                label.setStyleSheet("background-color: transparent;")
+            else:
+                # Format value using template and actual values
+                try:
+                    formatted_value = value_template.format(**hrv_values)
+                except (KeyError, ValueError):
+                    formatted_value = "N/A"
+
+                # Metric label
+                label = QtWidgets.QLabel(f"<span style='font-size:12px; color:#2E7D32; background-color: transparent;'><b>{name}:</b></span> <span style='font-size:12px; color:#263238; background-color: transparent;'>{formatted_value}</span>")
+                label.setToolTip(tooltip)
+                label.setStyleSheet("background-color: transparent;")
+            self.hrv_results_layout.addWidget(label)
         
         # Update tachogram
         beat_numbers = np.arange(len(valid_rr))
@@ -911,39 +945,83 @@ class ResearchTab(QtWidgets.QWidget, PlotNavigationMixin):
             'invalid_data_pct': invalid_count/samples*100 if samples > 0 else 0,
         }
         
-        # Display results
-        results_text = "<br>".join([
-            f"<span style='font-size:14px; color:#37474F; font-weight:bold;'>PPG SIGNAL QUALITY ASSESSMENT</span>",
-            f"<span style='font-size:12px; color:#2E7D32;'>Overall Quality:</span> "
-            f"<span style='font-size:12px; color:#263238;'>{mean_quality:.3f} ({quality_rating})</span>",
-            "",
-            f"<span style='font-size:12px; color:#455A64; font-weight:bold;'>NEUROKIT TEMPLATE MATCHING:</span>",
-            f"<span style='font-size:12px; color:#2E7D32;'>Mean Quality Score:</span> "
-            f"<span style='font-size:12px; color:#263238;'>{mean_quality:.3f}</span>",
-            f"<span style='font-size:12px; color:#2E7D32;'>Quality Range:</span> "
-            f"<span style='font-size:12px; color:#263238;'>{min_quality:.3f} - {max_quality:.3f}</span>",
-            f"<span style='font-size:12px; color:#2E7D32;'>Standard Deviation:</span> "
-            f"<span style='font-size:12px; color:#263238;'>{std_quality:.3f}</span>",
-            "",
-            f"<span style='font-size:12px; color:#455A64; font-weight:bold;'>QUALITY DISTRIBUTION:</span>",
-            f"<span style='font-size:12px; color:#2E7D32;'>High Quality (&gt;0.7):</span> "
-            f"<span style='font-size:12px; color:#263238;'>{high_quality_pct:.1f}%</span>",
-            f"<span style='font-size:12px; color:#2E7D32;'>Poor Quality (&lt;0.3):</span> "
-            f"<span style='font-size:12px; color:#263238;'>{poor_quality_pct:.1f}%</span>",
-            "",
-            f"<span style='font-size:12px; color:#455A64; font-weight:bold;'>ADDITIONAL METRICS:</span>",
-            f"<span style='font-size:12px; color:#2E7D32;'>SNR:</span> "
-            f"<span style='font-size:12px; color:#263238;'>{snr_db:.1f} dB</span>",
-            f"<span style='font-size:12px; color:#2E7D32;'>Invalid Data:</span> "
-            f"<span style='font-size:12px; color:#263238;'>{invalid_count/samples*100 if samples > 0 else 0:.1f}%</span>",
-            f"<span style='font-size:12px; color:#2E7D32;'>Duration:</span> "
-            f"<span style='font-size:12px; color:#263238;'>{duration:.1f}s</span>",
-            f"<span style='font-size:12px; color:#2E7D32;'>Samples:</span> "
-            f"<span style='font-size:12px; color:#263238;'>{samples:,}</span>"
-        ])
-        
-        self.quality_results.setText(results_text)
+        # Display results using QLabel widgets like HRV analysis
+        # Clear previous results
+        while self.quality_results_layout.count():
+            child = self.quality_results_layout.takeAt(0)
+            if child.widget():
+                child.widget().deleteLater()
+
+        # Define quality metrics with tooltips
+        quality_metrics = [
+            ("PPG SIGNAL QUALITY ASSESSMENT", "", "", True),  # Main header
+            ("Overall Quality", f"{mean_quality:.3f} ({quality_rating})",
+             "Overall signal quality rating based on NeuroKit template matching.<br>"
+             "<b>Excellent:</b> ≥0.8<br>"
+             "<b>Good:</b> 0.6–0.8<br>"
+             "<b>Fair:</b> 0.4–0.6<br>"
+             "<b>Poor:</b> &lt;0.4"),
+            ("", "", ""),  # Spacer
+            ("NEUROKIT TEMPLATE MATCHING", "", "", True),  # Section header
+            ("Mean Quality Score", f"{mean_quality:.3f}",
+             "Average quality score from NeuroKit's template matching algorithm.<br>"
+             "<b>Interpretation:</b> Higher scores indicate better signal quality and peak detection reliability."),
+            ("Quality Range", f"{min_quality:.3f} - {max_quality:.3f}",
+             "Range of quality scores across the signal.<br>"
+             "<b>Interpretation:</b> Narrow range suggests consistent quality; wide range indicates variable signal quality."),
+            ("Standard Deviation", f"{std_quality:.3f}",
+             "Variability in quality scores.<br>"
+             "<b>Interpretation:</b> Lower values indicate more consistent signal quality throughout the recording."),
+            ("", "", ""),  # Spacer
+            ("QUALITY DISTRIBUTION", "", "", True),  # Section header
+            ("High Quality (>0.7)", f"{high_quality_pct:.1f}%",
+             "Percentage of signal segments with quality score >0.7.<br>"
+             "<b>Interpretation:</b> Higher percentages indicate reliable peak detection and HRV analysis."),
+            ("Poor Quality (&lt;0.3)", f"{poor_quality_pct:.1f}%",
+             "Percentage of signal segments with quality score &lt;0.3<br>"
+             "<b>Interpretation:</b> Lower percentages are desirable; high values suggest unreliable analysis."),
+            ("", "", ""),  # Spacer
+            ("ADDITIONAL METRICS", "", "", True),  # Section header
+            ("SNR", f"{snr_db:.1f} dB",
+             "Signal-to-Noise Ratio of the filtered signal.<br>"
+             "<b>Normal:</b> >10 dB<br>"
+             "<b>Interpretation:</b> Higher values indicate cleaner signals with less noise interference."),
+            ("Invalid Data", f"{invalid_count/samples*100 if samples > 0 else 0:.1f}%",
+             "Percentage of missing or invalid data points.<br>"
+             "<b>Interpretation:</b> Lower percentages are desirable; high values may affect analysis accuracy."),
+            ("Duration", f"{duration:.1f}s",
+             "Total duration of the signal recording.<br>"
+             "<b>Interpretation:</b> Longer recordings provide more reliable HRV statistics."),
+            ("Samples", f"{samples:,}",
+             "Total number of data points in the signal.<br>"
+             "<b>Interpretation:</b> More samples generally provide better statistical reliability."),
+        ]
+
+        for name, value, tooltip, *is_header in quality_metrics:
+            if is_header and is_header[0]:
+                # Section header
+                label = QtWidgets.QLabel(f"<span style='font-size:14px; color:#37474F; font-weight:bold; background-color: transparent;'>{name}</span>")
+                label.setStyleSheet("background-color: transparent;")
+            elif name == "":
+                # Spacer
+                label = QtWidgets.QLabel("")
+                label.setStyleSheet("background-color: transparent;")
+            else:
+                # Metric label with tooltips
+                label = QtWidgets.QLabel(f"<span style='font-size:12px; color:#2E7D32; background-color: transparent;'><b>{name}:</b></span> <span style='font-size:12px; color:#263238; background-color: transparent;'>{value}</span>")
+                label.setToolTip(tooltip)
+                label.setStyleSheet("background-color: transparent;")
+            self.quality_results_layout.addWidget(label)
         self.log_status(f"Signal quality assessed: {quality_rating} (score: {mean_quality:.3f})")
+
+    def sanitize_filename(self, filename):
+        """Sanitize filename to remove invalid characters for file systems."""
+        import re
+        # Remove or replace invalid characters: < > : " | ? * \ /
+        # Also replace spaces with underscores for consistency
+        sanitized = re.sub(r'[<>:"|?*\\/]', '', filename)
+        sanitized = re.sub(r'\s+', '_', sanitized)  # Replace spaces with underscores
+        return sanitized
 
     def export_data(self):
         """Export selected analysis data."""
@@ -968,9 +1046,10 @@ class ResearchTab(QtWidgets.QWidget, PlotNavigationMixin):
             QtWidgets.QMessageBox.warning(self, "No Selection", "Please select data to export")
             return
         
-        # File dialog
-        session_name = self.session_selector.currentText().split(" | ")[0]
-        default_name = f"ppg_analysis_{self.current_user}_{session_name}"
+        # File dialog - simple timestamp-based naming
+        from datetime import datetime
+        timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        default_name = f"ppg_export_{timestamp}"
         
         file_format = self.export_format_combo.currentText()
         ext = "csv" if file_format == "CSV" else "txt"
@@ -1065,8 +1144,18 @@ class ResearchTab(QtWidgets.QWidget, PlotNavigationMixin):
         self.clear_rr_lines()
         
         # Clear displays
-        self.hrv_results.clear()
-        self.quality_results.clear()
+        # Clear HRV results layout
+        while self.hrv_results_layout.count():
+            child = self.hrv_results_layout.takeAt(0)
+            if child.widget():
+                child.widget().deleteLater()
+        
+        # Clear quality results layout
+        while self.quality_results_layout.count():
+            child = self.quality_results_layout.takeAt(0)
+            if child.widget():
+                child.widget().deleteLater()
+        
         self.metadata_label.setText("")
         
         for label in [self.samples_label, self.duration_label, self.missing_label, self.snr_label]:
