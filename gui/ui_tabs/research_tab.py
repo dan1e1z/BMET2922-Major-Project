@@ -495,10 +495,10 @@ class ResearchTab(QtWidgets.QWidget, PlotNavigationMixin):
         for i, session in enumerate(reversed(history)):
             if "raw_ppg" in session and session["raw_ppg"]:
                 start_time = session.get("start", f"Session {len(history)-i}")
-                duration = session.get("duration", "Unknown")
+                duration = session.get("duration_minutes", "Unknown")
                 sample_count = len(session["raw_ppg"])
                 
-                display_text = f"{start_time} | {duration}s | {sample_count} samples"
+                display_text = f"{start_time} | {duration:.1f}min | {sample_count} samples"
                 self.session_selector.addItem(display_text, userData=session)
 
     def load_selected_session(self, index):
