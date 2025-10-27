@@ -298,7 +298,7 @@ class HistoryTab(QtWidgets.QWidget):
             • Average BPM: {overall_avg:.1f}<br>
             • Range: {overall_min:.1f} - {overall_max:.1f} BPM<br>
             <b>⚠️ Abnormal Readings:</b><br>
-            • Low Readings (<{self.BPM_LOW_ABNORMAL} BPM): {all_low_count}<br>
+            • Low Readings (&lt;{self.BPM_LOW_ABNORMAL} BPM): {all_low_count}<br>
             • High Readings (>{self.BPM_HIGH_ABNORMAL} BPM): {all_high_count}<br>
             • Total Abnormal: {all_low_count + all_high_count}
             </div>
@@ -354,6 +354,13 @@ class HistoryTab(QtWidgets.QWidget):
         
         bottom_axis = self.plot.getAxis('bottom')
         bottom_axis.setTicks([[(i, label) for i, label in enumerate(x_labels)]])
+
+        # Set y-axis ticks in increments of 1
+        if hist.size > 0:
+            max_sessions = int(max(hist))
+            y_ticks = [(i, str(i)) for i in range(max_sessions + 2)]
+            self.plot.getAxis('left').setTicks([y_ticks])
+
         self.plot.setXRange(-0.5, len(hist) - 0.5)
         self.plot.setYRange(0, max(hist) * 1.1 if max(hist) > 0 else 1)
         self._update_analysis(all_bpms)
