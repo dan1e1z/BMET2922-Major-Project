@@ -579,7 +579,7 @@ class ResearchTab(QtWidgets.QWidget, PlotNavigationMixin):
         method = self.filter_method_combo.currentText()
         
         self.butterworth_controls.setVisible("Butterworth" in method)
-        self.savgol_controls.setVisible("Savitzky-Golay" in method)
+        self.savgol_controls.setVisible("Savitzky" in method)
         
         if "Butterworth" in method:
             filter_type = self.filter_type_combo.currentText()
@@ -595,9 +595,9 @@ class ResearchTab(QtWidgets.QWidget, PlotNavigationMixin):
         method = self.filter_method_combo.currentText()
         signal = self.raw_ppg_signal.copy()
         
-        if method == "Custom Butterworth":
+        if "Butterworth Filter" in method:
             self.filtered_ppg_signal = self.apply_butterworth_filter(signal)
-        elif method == "Savitzky-Golay":
+        elif "Savitzky" in method:
             window_length = self.window_length_spin.value()
             poly_order = self.poly_order_spin.value()
             if window_length <= poly_order:
@@ -605,13 +605,13 @@ class ResearchTab(QtWidgets.QWidget, PlotNavigationMixin):
                 self.window_length_spin.setValue(window_length)
                 self.log_status(f"Adjusted window length to {window_length}")
             self.filtered_ppg_signal = savgol_filter(signal, window_length, poly_order)
-        elif "NeuroKit" in method:
+        elif "Elgendi" in method:
             self.filtered_ppg_signal = SignalProcessingUtils.clean_ppg_signal(
                 signal, 
                 sampling_rate=self.sampling_rate, 
                 method="elgendi"
             )
-        else:  # No filter
+        else:  # No filter or "None (Raw Signal)"
             self.filtered_ppg_signal = signal.copy()
         
         # Normalize for display
