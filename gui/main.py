@@ -3,9 +3,10 @@ from PyQt5 import QtWidgets
 
 from gui.core import MainWindow
 
-if __name__ == "__main__":
 
-    QtWidgets.QApplication.setStyle('Fusion')
+def main():
+    """Main application entry point."""
+    # QtWidgets.QApplication.setStyle('Fusion')
     # Create the QApplication instance.
     app = QtWidgets.QApplication(sys.argv)
     
@@ -16,4 +17,8 @@ if __name__ == "__main__":
     viewer.show()
     
     # Start the application's event loop.
-    sys.exit(app.exec_())
+    return sys.exit(app.exec_())
+
+
+if __name__ == "__main__":
+    main()
