@@ -1,3 +1,10 @@
+"""
+Test module for main GUI entry point.
+
+Author: Daniel Lindsay-Shad
+Note: The Docstrings for methods were generated using Generative AI based on the method functionality.
+"""
+
 import pytest
 from unittest.mock import Mock, patch
 from PyQt5 import QtWidgets

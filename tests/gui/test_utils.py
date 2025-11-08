@@ -1,3 +1,10 @@
+"""
+Test module for GUI utilities.
+
+Author: Daniel Lindsay-Shad
+Note: The Docstrings for methods were generated using Generative AI based on the method functionality.
+"""
+
 import pytest
 import numpy as np
 from unittest.mock import Mock

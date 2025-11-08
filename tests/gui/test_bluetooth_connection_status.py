@@ -1,3 +1,10 @@
+"""
+Test module for BluetoothConnectionStatus.
+
+Author: Daniel Lindsay-Shad
+Note: The Docstrings for methods were generated using Generative AI based on the method functionality.
+"""
+
 import pytest
 from gui.ui_components.bluetooth_connection_status import BluetoothConnectionStatus
 

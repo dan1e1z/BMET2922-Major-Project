@@ -1,3 +1,10 @@
+"""
+Test module for UserManager.
+
+Author: Daniel Lindsay-Shad
+Note: The Docstrings for methods were generated using Generative AI based on the method functionality.
+"""
+
 import pytest
 from gui.core.user_manager import UserManager
 

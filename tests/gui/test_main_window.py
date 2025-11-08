@@ -1,3 +1,10 @@
+"""
+Test module for MainWindow.
+
+Author: Daniel Lindsay-Shad
+Note: The Docstrings for methods were generated using Generative AI based on the method functionality.
+"""
+
 import pytest
 from unittest.mock import Mock
 from datetime import datetime

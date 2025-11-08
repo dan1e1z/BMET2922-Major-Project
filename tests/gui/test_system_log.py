@@ -1,3 +1,10 @@
+"""
+Test module for SystemLog.
+
+Author: Daniel Lindsay-Shad
+Note: The Docstrings for methods were generated using Generative AI based on the method functionality.
+"""
+
 import pytest
 import re
 from datetime import datetime
