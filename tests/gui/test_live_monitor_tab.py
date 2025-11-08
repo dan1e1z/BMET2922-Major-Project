@@ -129,6 +129,22 @@ def test_new_data_received(widget):
     assert 75.0 in widget.session_bpm
     assert [1, 2, 3] == widget.session_raw_ppg
 
+def test_bpm_display_format(widget):
+    """Requirement 10: Test BPM format exactly 1 decimal place."""
+
+    widget.start_session("testuser")
+
+    # Testing Round Down - 1 decimal place
+    packet = {"bpm": 75.123, "ppg_values": [1, 2, 3]}
+    widget.new_data_received(packet)
+    assert widget.bpm_display.text() == "75.1 BPM" 
+
+    # Test Round Up - 1 decimal place
+    packet = {"bpm": 72.987, "ppg_values": [4, 5, 6]}
+    widget.new_data_received(packet)
+    assert widget.bpm_display.text() == "73.0 BPM"
+
+
 def test_check_bpm_alarm_high(widget):
     """Test the high BPM alarm."""
     widget.bpm_high = 100
