@@ -160,3 +160,100 @@ def test_additional_data_validation_utils():
     filtered = DataValidationUtils.filter_outliers(data, n_std=1)
     assert isinstance(filtered, np.ndarray)
     assert len(filtered) < len(data)
+
+
+def test_hrv_tooltip_utils():
+    """Test HRVTooltipUtils functionality."""
+    from gui.utils.hrv_tooltip_utils import HRVTooltipUtils
+    
+    # Test get_hrv_metric_tooltips
+    tooltips = HRVTooltipUtils.get_hrv_metric_tooltips()
+    assert isinstance(tooltips, dict)
+    assert "Mean IBI" in tooltips
+    assert "SDNN" in tooltips
+    assert "RMSSD" in tooltips
+    assert "<b>Normal:</b>" in tooltips["Mean IBI"]
+    
+    # Test get_hrv_metrics_definitions
+    definitions = HRVTooltipUtils.get_hrv_metrics_definitions()
+    assert isinstance(definitions, list)
+    assert len(definitions) > 10
+    
+    # Check for section headers
+    headers = [item for item in definitions if len(item) >= 4 and item[3] is True]
+    assert len(headers) >= 3  # TIME DOMAIN, FREQUENCY DOMAIN, NONLINEAR METRICS
+    
+    # Test format_hrv_metric_with_tooltip
+    display_text, tooltip = HRVTooltipUtils.format_hrv_metric_with_tooltip("Mean IBI", 750.5, "ms")
+    assert "750.5 ms" in display_text
+    assert tooltip == tooltips["Mean IBI"]
+    
+    # Test without unit
+    display_text, tooltip = HRVTooltipUtils.format_hrv_metric_with_tooltip("Heart Rate", 72.3)
+    assert "72.3" in display_text
+    assert tooltip == tooltips["Heart Rate"]
+    
+    # Test create_tooltip_label
+    label = HRVTooltipUtils.create_tooltip_label("SDNN", 45.2, "ms")
+    assert label is not None
+    assert "45.2 ms" in label.text()
+    assert label.toolTip() == tooltips["SDNN"]
+
+
+def test_plot_style_helper_comprehensive():
+    """Test additional PlotStyleHelper methods for full coverage."""
+    mock_plot = Mock(spec=pg.PlotWidget)
+    mock_legend = Mock()
+    
+    # Test toggle_legend_visibility
+    PlotStyleHelper.toggle_legend_visibility(mock_legend, True)
+    mock_legend.setVisible.assert_called_with(True)
+    
+    PlotStyleHelper.toggle_legend_visibility(mock_legend, False)
+    mock_legend.setVisible.assert_called_with(False)
+    
+    # Test with None legend
+    PlotStyleHelper.toggle_legend_visibility(None, True)
+    # Should not raise any exception
+    
+    # Test auto_scale_y_axis edge cases
+    mock_plot.setYRange = Mock()
+    
+    # Empty data
+    PlotStyleHelper.auto_scale_y_axis(mock_plot, [], [], (0, 1))
+    assert mock_plot.setYRange.call_count == 0
+    
+    # Reset mock
+    mock_plot.reset_mock()
+    
+    # Mismatched lengths
+    PlotStyleHelper.auto_scale_y_axis(mock_plot, [1], [1, 2], (0, 1))
+    assert mock_plot.setYRange.call_count == 0
+    
+    # Reset mock
+    mock_plot.reset_mock()
+    
+    # No data in range
+    PlotStyleHelper.auto_scale_y_axis(mock_plot, [2, 3], [10, 20], (0, 1))
+    assert mock_plot.setYRange.call_count == 0
+    
+    # Reset mock
+    mock_plot.reset_mock()
+    
+    # Fixed mode without limits
+    PlotStyleHelper.auto_scale_y_axis(mock_plot, [1], [1], (0, 1), scale_mode="fixed")
+    assert mock_plot.setYRange.call_count == 0
+    
+    # Reset mock
+    mock_plot.reset_mock()
+    
+    # Fixed mode with limits
+    PlotStyleHelper.auto_scale_y_axis(mock_plot, [1], [1], (0, 1), scale_mode="fixed", min_limit=0, max_limit=10)
+    mock_plot.setYRange.assert_called_with(0, 10, padding=0.1)
+    
+    # Reset mock
+    mock_plot.reset_mock()
+    
+    # None mode
+    PlotStyleHelper.auto_scale_y_axis(mock_plot, [1], [1], (0, 1), scale_mode="none")
+    assert mock_plot.setYRange.call_count == 0
