@@ -775,7 +775,7 @@ class ResearchTab(QtWidgets.QWidget, PlotNavigationMixin):
             return
         
         # Extract metrics from utility results
-        rr_mean = time_nonlinear_metrics.get('mean_ibi', 0)
+        rr_mean = time_nonlinear_metrics.get('mean_rr', 0)
         rr_std = time_nonlinear_metrics.get('sdnn', 0)
         rmssd = time_nonlinear_metrics.get('rmssd', 0)
         pnn50 = time_nonlinear_metrics.get('pnn50', 0)
