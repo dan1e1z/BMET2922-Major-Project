@@ -16,6 +16,7 @@ A real-time Photoplethysmography (PPG) signal visualizer and heart rate monitor 
     - [Software Prerequisites](#software-prerequisites)
     - [Installation](#installation)
   - [Usage](#usage)
+  - [Testing](#testing)
   - [Troubleshooting](#troubleshooting)
     - [Bluetooth Connection Issues](#bluetooth-connection-issues)
 
@@ -140,11 +141,25 @@ The app will prompt you to select the COM port for your ESP32 connection, then s
 3. Go to Live Monitor tab to start recording heart rate data
 4. Adjust BPM thresholds in the settings to receive alerts
 
+## Testing
+
+To run the test suite, use the following command from the project's root directory:
+
+```sh
+uv run pytest
+```
+
+For coverage report:
+
+```sh
+uv run pytest --cov=gui --cov-report=term-missing
+```
+
 ## Troubleshooting
 
 ### Bluetooth Connection Issues
 
-If you are having issues with the port selection, you can manually set the port by modifying the following line in `gui/core/bluetooth_monitor.py` at line 66:
+If you are having issues with the port selection or running tests, you can manually set the port by modifying the following line in `gui/core/bluetooth_monitor.py` at line 66:
 
 Change the port to your Bluetooth port.
 
