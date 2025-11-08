@@ -1,3 +1,5 @@
+<!-- Generated Using AI and edited by me -->
+
 # PPG Health Monitor
 
 A real-time Photoplethysmography (PPG) signal visualizer and heart rate monitor with a Python-based GUI.
@@ -10,7 +12,8 @@ A real-time Photoplethysmography (PPG) signal visualizer and heart rate monitor 
     - [Features](#features)
     - [Built With](#built-with)
   - [Getting Started](#getting-started)
-    - [Prerequisites](#prerequisites)
+    - [Hardware Requirements](#hardware-requirements)
+    - [Software Prerequisites](#software-prerequisites)
     - [Installation](#installation)
   - [Usage](#usage)
 
@@ -39,7 +42,13 @@ This project, developed for the BMET2922 course, is a desktop application for re
 
 This section will guide a user or developer on how to get your project set up and running on their local machine.
 
-### Prerequisites
+### Hardware Requirements
+- **ESP32 microcontroller** (any ESP32 development board)
+- **PPG sensor** connected to ESP32 analog pin
+- **Computer** with Bluetooth capability
+- **USB cable** for programming ESP32
+
+### Software Prerequisites
 
 This project requires Python 3.8+ and `pip` to be installed.
 
@@ -50,7 +59,7 @@ You can install the necessary Python packages using the `requirements.txt` file.
 1.  **Clone the repository**
    ```sh
    git clone https://github.com/dan1e1z/BMET2922-Major-Project.git
-   cd BMET2922-Major-Project/gui
+   cd BMET2922-Major-Project
    ```
 
 2.  **Create and activate a virtual environment**
@@ -63,12 +72,12 @@ You can install the necessary Python packages using the `requirements.txt` file.
         source .venv/bin/activate
         ```
 
-    *   On **Windows**:
+    *   On **Windows** (using Powershell):
         ```sh
         py -m venv .venv
          ./.venv/Scripts/activate.ps1
         ```
-
+ 
 3.  **Install the required packages**
 
     You can install all dependencies from the `requirements.txt` file.
@@ -76,10 +85,36 @@ You can install the necessary Python packages using the `requirements.txt` file.
     pip install -r requirements.txt
     ```
 
-    Alternatively, you can install the project in **editable mode** using its pyproject.toml file.    
-    ```sh
-    pip install -e .
-    ```
+4. **Set up Arduino IDE for ESP32**
+
+    **Install Arduino IDE:**
+    - Download from [arduino.cc](https://www.arduino.cc/en/software)
+
+    **Add ESP32 board support:**
+    - Open Arduino IDE → File → Preferences
+    - Add this URL to "Additional Boards Manager URLs": `https://dl.espressif.com/dl/package_esp32_index.json`
+    - Tools → Board → Boards Manager → Search "ESP32" → Install "esp32 by Espressif Systems"
+
+    **Install required libraries:**
+    - Tools → Manage Libraries → Install "BluetoothSerial" by Espressif Systems
+    - Download and install these ZIP libraries:
+      - [PeakDetection](https://github.com/leandcesar/PeakDetection)
+      - [Filters](https://github.com/JonHub/Filters)
+    
+    ![Download Github Zip](assets/download-ardunio-package-zip-labeled.png)
+    ![Add Download Zip as Ardunio Lilbray Package](assets/add-ardunio-package-zip-labeled.png)
+
+    **Upload code to ESP32:**
+    - Open `mcu/mcu.ino` in Arduino IDE
+    - Select ESP32 board from Tools → Board
+    - Select COM port from Tools → Port
+    - Click Upload button
+
+5. **Connect ESP32 via Bluetooth**
+
+    Power on your ESP32, then pair it with your computer:
+    
+    ![On Windows](assets/add-bluetooth-connection-to-esp32-labeled.png)
 
 ## Usage
 
@@ -87,3 +122,20 @@ To run the application, ensure your virtual environment is activated and execute
 ```sh
 python -m gui.main
 ```
+
+The app will prompt you to select the COM port for your ESP32 connection, then start with a login screen.
+![selected port prompt](assets/select-port.png)
+
+**Available Tabs:**
+- **Live Monitor**: View real-time PPG signals and heart rate data
+- **Account**: Create accounts, login/logout, manage user settings  
+- **Health History**: View past monitoring sessions with statistics
+- **Research**: Advanced analysis tools (requires advanced account type)
+
+**Getting Started:**
+1. Create a user account (choose "personal" or "advanced")
+2. Ensure ESP32 is powered on and Bluetooth connected
+3. Go to Live Monitor tab to start recording heart rate data
+4. Adjust BPM thresholds in the settings to receive alerts
+
+**Author**: Daniel Lindsay-Shad
