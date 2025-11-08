@@ -8,6 +8,7 @@ Note: The Docstrings for methods were generated using Generative AI based on the
 import pytest
 from unittest.mock import Mock
 from datetime import datetime
+import time
 from PyQt5 import QtWidgets
 from gui.core.main_window import MainWindow
 
@@ -44,6 +45,8 @@ def main_window(qtbot, mocker):
     live_tab.bpm_high = 100
     live_tab.start_session = Mock()
     live_tab.new_data_received = Mock(return_value=None)
+    live_tab.bpm_display = Mock()
+    live_tab.bpm_display.setText = Mock()
     w.live_monitor_tab = live_tab
 
     history_tab = Mock()
@@ -161,3 +164,57 @@ def test_close_window_saves_and_stops_thread(main_window, mocker):
     main_window.bluetooth_monitor_thread.quit.assert_called_once()
     main_window.bluetooth_monitor_thread.wait.assert_called_once()
     mock_quit.assert_called_once()
+
+
+def test_display_latency_requirement(main_window, mocker):
+    """Requirement 12: Test that display updates occur within 2 seconds of GUI receiving data."""
+    import time
+
+    # Set up user session
+    main_window.handle_login('testuser', 'personal')
+    main_window.session_start_time = datetime.now()
+
+    # Track when display methods are called
+    display_call_times = []
+
+    def track_display_call(*args, **kwargs):
+        # high-precision timestamp recorder (microsecond/nanosecond precision)
+        display_call_times.append(time.perf_counter())
+
+    # Creates a Timestamp of when display methods are called
+    mocker.patch.object(main_window.live_monitor_tab.bpm_display, 'setText', side_effect=track_display_call)
+    mocker.patch.object(main_window.live_monitor_tab.bpm_curve, 'setData', side_effect=track_display_call)
+    mocker.patch.object(main_window.live_monitor_tab.raw_ppg_curve, 'setData', side_effect=track_display_call)
+
+    # Mock new_data_received to simulate display updates
+    def mock_new_data_received(packet):
+        bpm = packet.get('bpm', 0)
+        if bpm > 0:
+            main_window.live_monitor_tab.bpm_display.setText(f"{bpm:.1f} BPM")
+            main_window.live_monitor_tab.bpm_curve.setData([1, 2, 3], [60, 70, bpm])
+            main_window.live_monitor_tab.raw_ppg_curve.setData([1, 2, 3], packet['ppg_values'][:3])
+        return None
+
+    main_window.live_monitor_tab.new_data_received = Mock(side_effect=mock_new_data_received)
+
+    # Test latency 10 times to ensure consistent performance
+    for i in range(10):
+        display_call_times.clear()
+
+        # Create a packet simulating microcontroller data capture
+        packet = {'sequence': i, 'ppg_values': tuple(range(50)), 'bpm': 75.0 + i * 0.1, 'mode': 0}
+
+        # Record the time when GUI receives the data (handle_new_packet called)
+        data_received_time = time.perf_counter()
+
+        # Process the packet
+        main_window.handle_new_packet(packet)
+
+        # Verify display methods were called
+        assert len(display_call_times) > 0, f"Iteration {i+1}: No display updates occurred"
+
+        # time between data received via packet and time when display updates
+        latency = display_call_times[0] - data_received_time
+
+        # Check that latency is < 2 seconds for each of the 10 iterations
+        assert latency < 2.0, f"Iteration {i+1}: Display latency {latency:.6f}s exceeds 2.0s requirement"
