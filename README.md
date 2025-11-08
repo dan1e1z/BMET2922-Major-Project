@@ -16,6 +16,8 @@ A real-time Photoplethysmography (PPG) signal visualizer and heart rate monitor 
     - [Software Prerequisites](#software-prerequisites)
     - [Installation](#installation)
   - [Usage](#usage)
+  - [Troubleshooting](#troubleshooting)
+    - [Bluetooth Connection Issues](#bluetooth-connection-issues)
 
 ## About The Project
 
@@ -137,5 +139,15 @@ The app will prompt you to select the COM port for your ESP32 connection, then s
 2. Ensure ESP32 is powered on and Bluetooth connected
 3. Go to Live Monitor tab to start recording heart rate data
 4. Adjust BPM thresholds in the settings to receive alerts
+
+## Troubleshooting
+
+### Bluetooth Connection Issues
+
+If you are having issues with the port selection, you can manually set the port by modifying the following line in `gui/core/bluetooth_monitor.py` at line 66:
+
+Change the port to your Bluetooth port.
+
+![bluetooth port code](assets/bluetooth-port-code.png)
 
 **Author**: Daniel Lindsay-Shad
