@@ -17,6 +17,41 @@ def main_window(qtbot, mocker):
 
     w = MainWindow()
     qtbot.addWidget(w)
+
+    # Replace components with mocks for controllable behaviour
+    w.system_log = Mock()
+    w.system_log.add_log_entry = Mock()
+
+    w.connection_status = Mock()
+    w.connection_status.update_status = Mock()
+    w.connection_status.show_timeout_alarm = Mock()
+    w.connection_status.update_mode = Mock()
+
+    w.user_manager = Mock()
+    w.user_manager.save_session = Mock()
+
+    live_tab = Mock()
+    live_tab.session_bpm = []
+    live_tab.session_raw_ppg = []
+    live_tab.bpm_low = 60
+    live_tab.bpm_high = 100
+    live_tab.start_session = Mock()
+    live_tab.new_data_received = Mock(return_value=None)
+    w.live_monitor_tab = live_tab
+
+    history_tab = Mock()
+    history_tab.start_session = Mock()
+    history_tab.update_history_view = Mock()
+    w.history_tab = history_tab
+
+    research_tab = Mock()
+    research_tab.start_session = Mock()
+    w.research_tab = research_tab
+
+    w.bluetooth_monitor = Mock()
+    w.bluetooth_monitor.running = True
+    w.bluetooth_monitor_thread = mock_thread.return_value
+
     return w
 
 
@@ -52,3 +87,70 @@ def test_save_current_session_computes_stats(main_window, mocker):
     assert call_args[0] == 'bob'
     sd = call_args[1]
     assert sd['avg_bpm'] == pytest.approx(80.0)
+
+
+def test_handle_login_enables_tabs_and_starts_sessions(main_window):
+    main_window.handle_login('eve', 'advanced')
+
+    assert main_window.current_user == 'eve'
+    assert main_window.tabs.isTabEnabled(2)
+    assert main_window.tabs.isTabEnabled(3)
+    main_window.live_monitor_tab.start_session.assert_called_once_with('eve')
+    main_window.research_tab.start_session.assert_called_once_with('eve', main_window.user_manager)
+    main_window.history_tab.start_session.assert_called_once_with('eve', main_window.user_manager)
+
+
+def test_handle_logout_resets_state(main_window):
+    main_window.current_user = 'sam'
+    main_window.live_monitor_tab.session_bpm = [60]
+    main_window.session_start_time = datetime.now()
+    main_window.live_monitor_tab.current_user = 'sam'
+    main_window.live_monitor_tab.session_start_time = datetime.now()
+    main_window.handle_logout()
+
+    assert main_window.current_user is None
+    assert not main_window.tabs.isTabEnabled(2)
+    assert not main_window.tabs.isTabEnabled(3)
+    assert main_window.live_monitor_tab.session_bpm == []
+    assert main_window.live_monitor_tab.current_user is None
+
+
+def test_handle_new_packet_sequence_and_status(main_window):
+    main_window.current_user = 'lee'
+    main_window.session_start_time = datetime.now()
+    main_window.expected_sequence = 2
+    packet = {'sequence': 4, 'bpm': 72.3, 'ppg_values': tuple(range(50)), 'mode': 1}
+
+    main_window.handle_new_packet(packet)
+
+    # Sequence mismatch logged and expected sequence updated
+    assert main_window.expected_sequence == 5
+    main_window.system_log.add_log_entry.assert_any_call('Packet sequence mismatch: expected 2, got 4')
+
+    assert '72.3' in main_window.status_bar.text()
+    main_window.connection_status.update_mode.assert_called_once_with(1)
+
+
+def test_handle_connection_status_and_timeout(main_window):
+    main_window.handle_connection_status(True, 'Connected')
+    main_window.connection_status.update_status.assert_called_once_with(True, 'Connected')
+
+    main_window.handle_connection_timeout()
+    main_window.connection_status.show_timeout_alarm.assert_called_once()
+    main_window.system_log.add_log_entry.assert_called_with('No data received for 5+ seconds - Check sensor power')
+
+
+def test_close_window_saves_and_stops_thread(main_window, mocker):
+    main_window.current_user = 'zoe'
+    main_window.live_monitor_tab.session_bpm = [70]
+    main_window.save_current_session = Mock()
+
+    mock_quit = mocker.patch('gui.core.main_window.QtWidgets.QApplication.quit')
+    main_window.close_window()
+
+    main_window.save_current_session.assert_called_once()
+    main_window.system_log.add_log_entry.assert_any_call('Application closing')
+    assert main_window.bluetooth_monitor.running is False
+    main_window.bluetooth_monitor_thread.quit.assert_called_once()
+    main_window.bluetooth_monitor_thread.wait.assert_called_once()
+    mock_quit.assert_called_once()
