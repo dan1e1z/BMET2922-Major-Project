@@ -1,3 +1,10 @@
+"""
+Test module for HistoryTab.
+
+Author: Daniel Lindsay-Shad
+Note: The Docstrings for methods were generated using Generative AI based on the method functionality.
+"""
+
 import pytest
 from PyQt5 import QtWidgets, QtCore
 from unittest.mock import Mock
@@ -5,44 +12,7 @@ from gui.ui_tabs.history_tab import HistoryTab
 import datetime
 
 @pytest.fixture
-def user_manager():
-    """Create a mock user manager with sample history."""
-    today = datetime.date.today()
-    yesterday = (today - datetime.timedelta(days=1)).isoformat()
-    two_days_ago = (today - datetime.timedelta(days=2)).isoformat()
-    manager = Mock()
-    manager.users = {
-        "testuser": {
-            "history": [
-                {
-                    "start": f"{yesterday}T10:00:00",
-                    "duration_minutes": 10,
-                    "avg_bpm": 75,
-                    "min_bpm": 60,
-                    "max_bpm": 90,
-                    "abnormal_low": 1,
-                    "abnormal_high": 2,
-                    "bpm_low_threshold": 60,
-                    "bpm_high_threshold": 100
-                },
-                {
-                    "start": f"{two_days_ago}T11:00:00",
-                    "duration_minutes": 15,
-                    "avg_bpm": 80,
-                    "min_bpm": 65,
-                    "max_bpm": 95,
-                    "abnormal_low": 0,
-                    "abnormal_high": 0,
-                    "bpm_low_threshold": 60,
-                    "bpm_high_threshold": 100
-                }
-            ]
-        }
-    }
-    return manager
-
-@pytest.fixture
-def widget(qtbot, user_manager):
+def widget(qtbot, mock_user_manager_with_history):
     """Create an instance of the widget."""
     widget = HistoryTab()
     qtbot.addWidget(widget)
@@ -82,7 +52,7 @@ def widget(qtbot, user_manager):
     widget.apply_filters = lambda: HistoryTab.apply_filters(widget)
     widget.reset_filters = lambda: HistoryTab.reset_filters(widget)
     widget.BPM_LOW_ABNORMAL = 40
-    widget.start_session("testuser", user_manager)
+    widget.start_session("testuser", mock_user_manager_with_history)
     return widget
 
 def test_initial_state(widget):

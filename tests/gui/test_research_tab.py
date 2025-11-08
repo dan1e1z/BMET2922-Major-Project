@@ -1,3 +1,10 @@
+"""
+Test module for ResearchTab.
+
+Author: Daniel Lindsay-Shad
+Note: The Docstrings for methods were generated using Generative AI based on the method functionality.
+"""
+
 
 import pytest
 from unittest.mock import Mock
@@ -6,28 +13,11 @@ import pandas as pd
 from gui.ui_tabs.research_tab import ResearchTab
 
 @pytest.fixture
-def user_manager():
-    """Create a mock user manager with sample session data."""
-    manager = Mock()
-    manager.users = {
-        "testuser": {
-            "history": [
-                {
-                    "start": "2023-01-01T10:00:00",
-                    "duration_minutes": 60,
-                    "raw_ppg": list(np.sin(np.linspace(0, 10 * np.pi, 3000)))
-                }
-            ]
-        }
-    }
-    return manager
-
-@pytest.fixture
-def widget(qtbot, user_manager):
+def widget(qtbot, mock_user_manager_with_raw_ppg):
     """Create an instance of the widget."""
     widget = ResearchTab()
     qtbot.addWidget(widget)
-    widget.start_session("testuser", user_manager)
+    widget.start_session("testuser", mock_user_manager_with_raw_ppg)
     return widget
 
 def test_initial_state(widget):

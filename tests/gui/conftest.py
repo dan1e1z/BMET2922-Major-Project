@@ -1,3 +1,10 @@
+"""
+Pytest configuration and fixtures for GUI tests.
+
+Author: Daniel Lindsay-Shad
+Note: The Docstrings for methods were generated using Generative AI based on the method functionality.
+"""
+
 import pytest
 import sys
 import numpy as np
@@ -68,7 +75,7 @@ def sample_session_data():
 
 @pytest.fixture(scope="session")
 def mock_user_manager_factory():
-    """Factory for creating mock UserManager instances (session-scoped to avoid recreation)."""
+    """Factory for creating mock UserManager instances."""
     def _create_manager(users=None):
         manager = Mock()
         manager.users = users or {
@@ -91,3 +98,53 @@ def mock_user_manager_factory():
 def mock_user_manager(mock_user_manager_factory):
     """Create a standard mock UserManager for tests."""
     return mock_user_manager_factory()
+
+@pytest.fixture
+def mock_user_manager_with_history(mock_user_manager_factory):
+    """Create a mock UserManager with sample history data."""
+    import datetime
+    today = datetime.date.today()
+    yesterday = (today - datetime.timedelta(days=1)).isoformat()
+    two_days_ago = (today - datetime.timedelta(days=2)).isoformat()
+    
+    manager = mock_user_manager_factory()
+    manager.users["testuser"]["history"] = [
+        {
+            "start": f"{yesterday}T10:00:00",
+            "duration_minutes": 10,
+            "avg_bpm": 75,
+            "min_bpm": 60,
+            "max_bpm": 90,
+            "abnormal_low": 1,
+            "abnormal_high": 2,
+            "bpm_low_threshold": 60,
+            "bpm_high_threshold": 100
+        },
+        {
+            "start": f"{two_days_ago}T11:00:00",
+            "duration_minutes": 15,
+            "avg_bpm": 80,
+            "min_bpm": 65,
+            "max_bpm": 95,
+            "abnormal_low": 0,
+            "abnormal_high": 0,
+            "bpm_low_threshold": 60,
+            "bpm_high_threshold": 100
+        }
+    ]
+    return manager
+
+
+@pytest.fixture
+def mock_user_manager_with_raw_ppg(mock_user_manager_factory):
+    """Create a mock UserManager with raw PPG data for research tests."""
+    import numpy as np
+    manager = mock_user_manager_factory()
+    manager.users["testuser"]["history"] = [
+        {
+            "start": "2023-01-01T10:00:00",
+            "duration_minutes": 60,
+            "raw_ppg": list(np.sin(np.linspace(0, 10 * np.pi, 3000)))
+        }
+    ]
+    return manager
