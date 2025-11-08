@@ -1,3 +1,12 @@
+"""
+Research tab UI component.
+
+Advanced analysis tab for HRV and signal processing research features.
+
+Author: Daniel Lindsay-Shad
+Note: The Docstrings for methods were generated using Generative AI based on the method functionality.
+"""
+
 from PyQt5 import QtWidgets, QtCore, QtGui
 import pyqtgraph as pg
 import numpy as np
@@ -835,7 +844,6 @@ class ResearchTab(QtWidgets.QWidget, PlotNavigationMixin):
             if child.widget():
                 child.widget().deleteLater()
 
-        # Prepare values for formatting
         hrv_values = {
             'mean_ibi': rr_mean,
             'sdnn': rr_std,
@@ -1017,10 +1025,8 @@ class ResearchTab(QtWidgets.QWidget, PlotNavigationMixin):
     def sanitize_filename(self, filename):
         """Sanitize filename to remove invalid characters for file systems."""
         import re
-        # Remove or replace invalid characters: < > : " | ? * \ /
-        # Also replace spaces with underscores for consistency
         sanitized = re.sub(r'[<>:"|?*\\/]', '', filename)
-        sanitized = re.sub(r'\s+', '_', sanitized)  # Replace spaces with underscores
+        sanitized = re.sub(r'\s+', '_', sanitized)
         return sanitized
 
     def export_data(self):

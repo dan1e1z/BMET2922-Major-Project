@@ -1,3 +1,12 @@
+"""
+Signal processing utilities.
+
+Provides functions for PPG signal processing and analysis.
+
+Author: Daniel Lindsay-Shad
+Note: The Docstrings for methods were generated using Generative AI based on the method functionality.
+"""
+
 import numpy as np
 import neurokit2 as nk
 

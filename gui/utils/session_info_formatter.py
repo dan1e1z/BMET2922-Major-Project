@@ -1,3 +1,12 @@
+"""
+Session info formatter utilities.
+
+Provides functions for formatting session information for display.
+
+Author: Daniel Lindsay-Shad
+Note: The Docstrings for methods were generated using Generative AI based on the method functionality.
+"""
+
 import numpy as np
 from datetime import datetime
 

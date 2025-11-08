@@ -1,3 +1,12 @@
+"""
+Plot style helper utilities.
+
+Provides functions for styling and scaling plots.
+
+Author: Daniel Lindsay-Shad
+Note: The Docstrings for methods were generated using Generative AI based on the method functionality.
+"""
+
 class PlotStyleHelper:
     @staticmethod
     def auto_scale_y_axis(plot_widget, x_data, y_data, x_range, padding=0.1, min_limit=None, max_limit=None, scale_mode="auto"):

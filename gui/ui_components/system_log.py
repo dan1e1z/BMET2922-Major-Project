@@ -1,3 +1,12 @@
+"""
+System log UI component.
+
+Provides a widget for displaying and managing system log messages.
+
+Author: Daniel Lindsay-Shad
+Note: The Docstrings for methods were generated using Generative AI based on the method functionality.
+"""
+
 from PyQt5 import QtWidgets
 from datetime import datetime
 

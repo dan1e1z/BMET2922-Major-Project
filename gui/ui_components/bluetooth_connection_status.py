@@ -1,3 +1,12 @@
+"""
+Bluetooth connection status UI component.
+
+Displays the current Bluetooth connection status and detection mode.
+
+Author: Daniel Lindsay-Shad
+Note: The Docstrings for methods were generated using Generative AI based on the method functionality.
+"""
+
 from PyQt5 import QtWidgets
 class BluetoothConnectionStatus(QtWidgets.QWidget):
     """Displays the current Bluetooth connection status and detection mode."""

@@ -1,4 +1,8 @@
-"""core components for the application."""
+"""
+Core components for the PPG Health Monitor application.
+
+Author: Daniel Lindsay-Shad
+"""
 
 from .bluetooth_monitor import BluetoothMonitor
 from .main_window import MainWindow

@@ -3,6 +3,9 @@ HRV Tooltip Utilities
 
 This module provides standardized tooltip definitions for HRV (Heart Rate Variability)
 metrics used across different UI components in the application.
+
+Author: Daniel Lindsay-Shad
+Note: The Docstrings for methods were generated using Generative AI based on the method functionality.
 """
 
 class HRVTooltipUtils:

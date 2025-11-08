@@ -1,4 +1,8 @@
-"""UI tabs for the application."""
+"""
+UI tabs for the PPG Health Monitor application.
+
+Author: Daniel Lindsay-Shad
+"""
 
 from .account_tab import AccountTab
 from .history_tab import HistoryTab

@@ -1,3 +1,12 @@
+"""
+Live monitor tab UI component.
+
+Provides real-time PPG signal monitoring with live plotting and BPM calculation.
+
+Author: Daniel Lindsay-Shad
+Note: The Docstrings for methods were generated using Generative AI based on the method functionality.
+"""
+
 from PyQt5 import QtWidgets, QtCore, QtGui
 import pyqtgraph as pg
 import numpy as np

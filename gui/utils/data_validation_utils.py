@@ -1,3 +1,12 @@
+"""
+Data validation utilities.
+
+Provides functions for validating PPG data and signal quality metrics.
+
+Author: Daniel Lindsay-Shad
+Note: The Docstrings for methods were generated using Generative AI based on the method functionality.
+"""
+
 import numpy as np
 
 class DataValidationUtils:

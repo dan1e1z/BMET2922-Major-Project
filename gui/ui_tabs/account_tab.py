@@ -1,3 +1,12 @@
+"""
+Account tab UI component.
+
+Handles user account management including login, signup, and logout.
+
+Author: Daniel Lindsay-Shad
+Note: The Docstrings for methods were generated using Generative AI based on the method functionality.
+"""
+
 from PyQt5 import QtWidgets, QtCore
 from datetime import datetime
 

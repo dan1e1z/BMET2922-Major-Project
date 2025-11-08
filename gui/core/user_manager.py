@@ -1,5 +1,15 @@
+"""
+User management module for PPG Health Monitor.
+
+Handles user accounts, authentication, and session data storage.
+
+Author: Daniel Lindsay-Shad
+Note: The Docstrings for methods were generated using Generative AI based on the method functionality.
+"""
+
 import json
 import os
+
 
 class UserManager:
     """

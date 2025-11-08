@@ -1,3 +1,12 @@
+"""
+History tab UI component.
+
+Displays user's health history and session data with interactive plots.
+
+Author: Daniel Lindsay-Shad
+Note: The Docstrings for methods were generated using Generative AI based on the method functionality.
+"""
+
 from PyQt5 import QtWidgets, QtCore, QtGui
 import pyqtgraph as pg
 import numpy as np
@@ -31,7 +40,7 @@ class HistoryTab(QtWidgets.QWidget):
         super().__init__()
         self.current_user = None
         self.user_manager = None
-        self.all_sessions = []  # Store a clean copy of the user's history
+        self.all_sessions = []
         self.setup_ui()
 
     def setup_ui(self):
@@ -251,7 +260,7 @@ class HistoryTab(QtWidgets.QWidget):
         self.user_manager = user_manager
         
         user_data = self.user_manager.users.get(self.current_user, {})
-        # Store a clean, pre-processed copy of the history
+
         self.all_sessions = user_data.get("history", [])
         
         self.update_history_view()

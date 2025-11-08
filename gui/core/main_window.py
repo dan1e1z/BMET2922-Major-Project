@@ -1,3 +1,11 @@
+"""
+Main window module for PPG Health Monitor.
+
+Provides the main application window and UI coordination.
+
+Author: Daniel Lindsay-Shad
+Note: The Docstrings for methods were generated using Generative AI based on the method functionality.
+"""
 
 from PyQt5 import QtWidgets, QtCore, QtGui
 from datetime import datetime
@@ -17,7 +25,6 @@ from gui.ui_components import (
 from gui.core.bluetooth_monitor import BluetoothMonitor
 from gui.core.user_manager import UserManager
 
-
 class MainWindow(QtWidgets.QMainWindow):
     """
     Main application window for the PPG Health Monitor.
@@ -29,7 +36,6 @@ class MainWindow(QtWidgets.QMainWindow):
         """
         super().__init__()
         self.setWindowTitle("PPG Health Monitor")
-        # self.setGeometry(100, 100, 1200, 800)
 
         # User/session management variables
         self.user_manager = UserManager()
@@ -186,8 +192,8 @@ class MainWindow(QtWidgets.QMainWindow):
         # Reset state
         self.current_user = None
         self.session_start_time = None
-        self.tabs.setTabEnabled(2, False)
-        self.tabs.setTabEnabled(3, False)
+        self.tabs.setTabEnabled(2, False) # Disable history tab
+        self.tabs.setTabEnabled(3, False) # Disable research tab
 
         
         # Reset live monitor tab
@@ -227,23 +233,18 @@ class MainWindow(QtWidgets.QMainWindow):
         Overrides the close event to ask for confirmation before closing.
         """
         event.accept()
-        # reply = QtWidgets.QMessageBox.question(self, 'Confirm Close',
-        #     "Do you want to save your session and quit?",
-        #     QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No | QtWidgets.QMessageBox.Cancel)
-
-        # if reply == QtWidgets.QMessageBox.Yes:
-        #     print("Saving session and closing...")
-        #     self.close_window() 
-        #     event.accept()
-        # elif reply == QtWidgets.QMessageBox.No:
-        #     print("Closing without saving...")
-        #     event.accept()
-        # else:
-        #     print("Close operation canceled.")
-        #     event.ignore()
 
 
     def handle_new_packet(self, packet):
+        """
+        Handle incoming data packet from Bluetooth monitor.
+
+        Processes packet sequence validation, updates live monitor with new data,
+        checks for alarms, and updates status bar with current session info.
+
+        Args:
+            packet (dict): Data packet containing PPG sensor information
+        """
         sequence = packet.get('sequence', 0)
         if sequence != self.expected_sequence:
             self.system_log.add_log_entry(f"Packet sequence mismatch: expected {self.expected_sequence}, got {sequence}")
@@ -266,15 +267,34 @@ class MainWindow(QtWidgets.QMainWindow):
             self.connection_status.update_mode(mode)
 
     def handle_connection_status(self, connected, message):
+        """
+        Handle Bluetooth connection status changes.
+
+        Updates the connection status widget with current connection state.
+
+        Args:
+            connected (bool): Whether the device is connected
+            message (str): Status message to display
+        """
         self.connection_status.update_status(connected, message)
         pass
 
     def handle_connection_timeout(self):
-        """Handle timeout when no packets received for 5+ seconds"""
+        """
+        Handle connection timeout when no packets received for 5+ seconds.
+
+        Shows timeout alarm in connection status and logs the event.
+        """
         self.connection_status.show_timeout_alarm()
         self.system_log.add_log_entry("No data received for 5+ seconds - Check sensor power")
 
     def save_current_session(self):
+        """
+        Save the current user session data to the user manager.
+
+        Calculates session statistics including average BPM, min/max BPM,
+        and abnormal readings before saving to persistent storage.
+        """
         # print("save current session")
 
         session_raw_ppg = self.live_monitor_tab.session_raw_ppg

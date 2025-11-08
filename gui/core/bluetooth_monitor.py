@@ -1,10 +1,58 @@
+"""
+Bluetooth monitoring module for PPG Health Monitor.
+
+This module handles serial communication with Bluetooth devices,
+specifically for receiving PPG sensor data packets.
+
+Author: Daniel Lindsay-Shad
+Note: The Docstrings for methods were generated using Generative AI based on the method functionality.
+"""
+
 from PyQt5 import QtCore
 import struct
 import serial
+import serial.tools.list_ports
 import time
-import datetime 
+import datetime
+import sys
+
 PACKET_RECEIVE_TIMEOUT = 1.1
 FIVE_SEC_TIMEOUT = 5
+
+def get_port():
+    """
+    Interactively select a serial port for Bluetooth communication.
+
+    Lists available serial ports and prompts user to choose one.
+    Exits the program if no ports are available.
+
+    Returns:
+        str: The selected serial port device path
+    """
+    ports = serial.tools.list_ports.comports()
+    if not ports:
+        print("\nNo serial ports found. Please check your device connection.")
+        sys.exit()
+    
+    print("\nAvailable serial ports:")
+    for i, port in enumerate(ports):
+        print(f"  {i+1}: {port.device} - {port.description}")
+
+    while True:
+        try:
+            choice = input("\nEnter the number of the port you want to use: ")
+            choice_num = int(choice)
+            
+            if 1 <= choice_num <= len(ports):
+                selected_port = ports[choice_num - 1].device
+                print(f"You selected: {selected_port}\n")
+                return f"{selected_port}"
+            else:
+                print("Invalid number. Please pick a number from the list.")
+        except ValueError:
+            print("Invalid input. Please try again.")
+
+    return f""
 
 class BluetoothMonitor(QtCore.QObject):
     """
@@ -14,7 +62,15 @@ class BluetoothMonitor(QtCore.QObject):
     connection_status_changed = QtCore.pyqtSignal(bool, str)
     connection_timeout = QtCore.pyqtSignal()
 
-    def __init__(self, port="COM3", baudRate=115200):
+    def __init__(self, port=get_port(), baudRate=115200):
+    # def __init__(self, port="COMP7", baudRate=115200):
+        """
+        Initialize the Bluetooth monitor.
+
+        Args:
+            port (str): Serial port device path
+            baudRate (int): Baud rate for serial communication
+        """
         super().__init__()
         self.port = port
         self.baudRate = baudRate
@@ -50,6 +106,10 @@ class BluetoothMonitor(QtCore.QObject):
                 pass
 
     def reconnect(self):
+        """
+        Attempt to reconnect to the serial port after a disconnection.
+        Closes the current port and tries to establish a new connection.
+        """
         print("Reconnecting...")
         start = time.time()
         print(f"Closing port {self.port}...")
@@ -58,15 +118,11 @@ class BluetoothMonitor(QtCore.QObject):
         self.connect()
         print(f"Reconnected in {time.time() - start:.2f} seconds.")
 
-
-        
-
     def monitor(self):
         """
         Main loop: reads packets, handles timeouts, and reconnects if needed.
         """
         while self.running:
-
             if not self.serialPort or not self.serialPort.is_open:
                 self.connect()
 
@@ -99,7 +155,6 @@ class BluetoothMonitor(QtCore.QObject):
                 #     self.reconnect()
 
                 # 5 second - packet alert Timeout check
-                # elif time.time() - self.last_packet_time > FIVE_SEC_TIMEOUT:
                 elif time.time() - self.last_packet_time > FIVE_SEC_TIMEOUT:
                     print(f"No data received for {FIVE_SEC_TIMEOUT}s.")
                     self.connection_status_changed.emit(False, "Disconnected: Timeout")

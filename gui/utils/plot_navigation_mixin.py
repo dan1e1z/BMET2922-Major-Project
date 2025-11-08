@@ -1,3 +1,12 @@
+"""
+Plot navigation mixin.
+
+Provides common plot navigation controls for UI tabs.
+
+Author: Daniel Lindsay-Shad
+Note: The Docstrings for methods were generated using Generative AI based on the method functionality.
+"""
+
 from PyQt5 import QtWidgets, QtCore
 
 class PlotNavigationMixin:
