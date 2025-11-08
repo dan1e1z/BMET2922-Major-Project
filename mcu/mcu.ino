@@ -36,11 +36,11 @@
 BluetoothSerial SerialBT;
 
 struct __attribute__((packed)) heartpacket {
-  uint32_t sequenceNumber;
-  uint16_t rawData[50];
-  float bpm;
-  uint8_t mode;
-};
+  uint32_t sequenceNumber;     // 4 bytes
+  uint16_t rawData[50];        // 2 bytes * 50 = 100 bytes
+  float bpm;                   // 4 bytes
+  uint8_t mode;                // 1 byte
+};                             // Total = 4 + 100 + 4 + 1 = 109 bytes
 
 heartpacket packet;
 
