@@ -114,7 +114,6 @@ class BluetoothMonitor(QtCore.QObject):
         start = time.time()
         print(f"Closing port {self.port}...")
         self.serialPort.close()
-        # time.sleep(20) 
         self.connect()
         print(f"Reconnected in {time.time() - start:.2f} seconds.")
 
@@ -150,10 +149,6 @@ class BluetoothMonitor(QtCore.QObject):
                         print("Incomplete packet received. Discarding.")
                         self.serialPort.reset_input_buffer()
                 
-                # elif time.time() - self.last_packet_time > PACKET_RECEIVE_TIMEOUT:
-                #     self.connection_status_changed.emit(False, "Disconnected: Timeout")
-                #     self.reconnect()
-
                 # 5 second - packet alert Timeout check
                 elif time.time() - self.last_packet_time > FIVE_SEC_TIMEOUT:
                     print(f"No data received for {FIVE_SEC_TIMEOUT}s.")
