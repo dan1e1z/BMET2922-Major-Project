@@ -165,4 +165,4 @@ Change the port to your Bluetooth port.
 
 ![bluetooth port code](assets/bluetooth-port-code.png)
 
-**Author**: Daniel Lindsay-Shad
+**Author**: Daniel Lindsay-Shad, Harneet Kaur Dhaliwal, Gladys De Euphrates
