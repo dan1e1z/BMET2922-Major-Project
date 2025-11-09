@@ -4,7 +4,7 @@ Bluetooth monitoring module for PPG Health Monitor.
 This module handles serial communication with Bluetooth devices,
 specifically for receiving PPG sensor data packets.
 
-Author: Daniel Lindsay-Shad
+Author: Harneet Kaur Dhaliwal, Gladys De Euphrates, Daniel Lindsay-Shad
 Note: The Docstrings for methods were generated using Generative AI based on the method functionality.
 """
 
@@ -62,8 +62,8 @@ class BluetoothMonitor(QtCore.QObject):
     connection_status_changed = QtCore.pyqtSignal(bool, str)
     connection_timeout = QtCore.pyqtSignal()
 
-    def __init__(self, port=get_port(), baudRate=115200):
-    # def __init__(self, port="COMP7", baudRate=115200):
+    # def __init__(self, port=get_port(), baudRate=115200):
+    def __init__(self, port="COMP7", baudRate=115200):
         """
         Initialize the Bluetooth monitor.
 

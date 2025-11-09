@@ -1,3 +1,7 @@
+/*
+** Author: Harneet Kaur Dhaliwal, Gladys De Euphrates, Daniel Lindsay-Shad
+*/
+
 #include "switch.h"
 #include "pulse_sim.h"
 #include <BluetoothSerial.h>
